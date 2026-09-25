@@ -10,14 +10,46 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="app-shell">
+  <section id="authScreen" class="auth-shell">
+    <div class="auth-card">
+      <p class="eyebrow">BUDGET FLOW CLOUD</p>
+      <h1>Твой бюджет в облаке</h1>
+      <p class="auth-copy">Войди, чтобы расходы синхронизировались между телефоном и компьютером.</p>
+
+      <div class="auth-tabs" role="tablist">
+        <button class="auth-tab active" data-auth-mode="login">Войти</button>
+        <button class="auth-tab" data-auth-mode="signup">Регистрация</button>
+      </div>
+
+      <form id="authForm" class="auth-form">
+        <label>Email
+          <input id="authEmail" type="email" autocomplete="email" required placeholder="you@example.com" />
+        </label>
+        <label>Пароль
+          <input id="authPassword" type="password" autocomplete="current-password" minlength="6" required placeholder="Минимум 6 символов" />
+        </label>
+        <button id="authSubmitBtn" class="primary-btn" type="submit">Войти</button>
+      </form>
+      <p id="authMessage" class="auth-message" hidden></p>
+    </div>
+  </section>
+
+  <main id="appShell" class="app-shell" hidden>
     <header class="topbar">
       <div>
         <p class="eyebrow" id="monthLabel">MONTH BUDGET</p>
         <h1>Budget Flow</h1>
       </div>
-      <button id="resetBtn" class="ghost-btn" aria-label="Сбросить месяц">Reset</button>
+      <div class="top-actions">
+        <span id="syncBadge" class="sync-badge">Cloud</span>
+        <button id="logoutBtn" class="ghost-btn">Выйти</button>
+      </div>
     </header>
+
+    <div class="account-row">
+      <span id="userEmail" class="muted"></span>
+      <span id="syncStatus" class="muted">Синхронизировано</span>
+    </div>
 
     <section class="hero-card">
       <p class="muted">Осталось в этом месяце</p>
@@ -53,7 +85,7 @@
     <section>
       <div class="section-title-row">
         <h2>Последние траты</h2>
-        <button id="clearTransactionsBtn" class="link-btn">Очистить</button>
+        <button id="refreshBtn" class="link-btn">Обновить</button>
       </div>
       <div id="transactions" class="transactions"></div>
     </section>
@@ -80,6 +112,7 @@
     </form>
   </dialog>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
 </body>
 </html>

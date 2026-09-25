@@ -1,40 +1,17 @@
-# Budget Flow MVP
+# Budget Flow v3
 
-Simple local-first PWA for personal/business expense tracking.
+Cloud-enabled PWA budget tracker using Supabase Auth + Postgres.
 
-## What it does
-- Parse a quick expense line such as `Publix 54 продукты`.
-- Auto-suggest a category from merchant/keyword rules.
-- Let the user confirm/edit the category before saving.
-- Track monthly category limits and remaining amounts.
-- Separate Family and Business expenses.
-- Store all data locally in the browser via localStorage.
-- Works offline after first load.
+## Features
+- Email/password sign-up and login
+- Per-user RLS-backed cloud expenses
+- Sync across devices
+- One-time migration of old local expenses
+- Family / Business scopes
+- Multi-expense parsing
+- Edit/delete transactions
 
-## Run locally
-From this folder:
+## Deploy
+Upload the files in this folder to the root of the GitHub repository. Vercel will redeploy automatically.
 
-```bash
-python3 -m http.server 8080
-```
-
-Then open http://localhost:8080
-
-## iPhone
-Host the folder on Vercel, Netlify, GitHub Pages, or any HTTPS static host. Open it in Safari and use Share → Add to Home Screen.
-
-## Current personal limits (+10% cushion)
-- Rent: $2,178
-- Electricity: $184.80
-- Phone: $173.80
-- Internet: $55
-- Home Gas: $39.60
-- Groceries: $770
-- Eating Out: $286
-- Gas / Fuel: $231
-- Insurance: $234.70
-- Subscriptions: $110
-- Debt / Affirm: $74.80
-- Other: $330
-
-Business categories currently have no hard caps in the MVP.
+If an older PWA is cached, hard-refresh or remove/re-add the Home Screen app after deployment.
