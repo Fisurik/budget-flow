@@ -15,3 +15,10 @@ Cloud-enabled PWA budget tracker using Supabase Auth + Postgres.
 Upload the files in this folder to the root of the GitHub repository. Vercel will redeploy automatically.
 
 If an older PWA is cached, hard-refresh or remove/re-add the Home Screen app after deployment.
+
+
+## v3.1 auth fix
+- Magic-link login by email.
+- Password reset flow.
+- Password recovery dialog.
+- New service-worker cache version for mobile updates.

@@ -27,12 +27,13 @@ let authMode = 'login';
 
 const els = {
   authScreen: document.querySelector('#authScreen'), appShell: document.querySelector('#appShell'), authForm: document.querySelector('#authForm'),
-  authEmail: document.querySelector('#authEmail'), authPassword: document.querySelector('#authPassword'), authSubmitBtn: document.querySelector('#authSubmitBtn'), authMessage: document.querySelector('#authMessage'),
+  authEmail: document.querySelector('#authEmail'), authPassword: document.querySelector('#authPassword'), authSubmitBtn: document.querySelector('#authSubmitBtn'), authMessage: document.querySelector('#authMessage'), magicLinkBtn: document.querySelector('#magicLinkBtn'), forgotPasswordBtn: document.querySelector('#forgotPasswordBtn'),
   logoutBtn: document.querySelector('#logoutBtn'), userEmail: document.querySelector('#userEmail'), syncStatus: document.querySelector('#syncStatus'), syncBadge: document.querySelector('#syncBadge'), refreshBtn: document.querySelector('#refreshBtn'),
   remainingTotal: document.querySelector('#remainingTotal'), spentTotal: document.querySelector('#spentTotal'), budgetTotal: document.querySelector('#budgetTotal'),
   expenseInput: document.querySelector('#expenseInput'), addBtn: document.querySelector('#addBtn'), categoryList: document.querySelector('#categoryList'), transactions: document.querySelector('#transactions'),
   editDialog: document.querySelector('#editDialog'), editAmount: document.querySelector('#editAmount'), editCategory: document.querySelector('#editCategory'), editDescription: document.querySelector('#editDescription'),
   saveExpenseBtn: document.querySelector('#saveExpenseBtn'), dialogTitle: document.querySelector('#dialogTitle'), deleteExpenseBtn: document.querySelector('#deleteExpenseBtn'), parsedPreview: document.querySelector('#parsedPreview'), monthLabel: document.querySelector('#monthLabel'),
+  resetPasswordDialog: document.querySelector('#resetPasswordDialog'), resetPasswordForm: document.querySelector('#resetPasswordForm'), newPassword: document.querySelector('#newPassword'), newPasswordConfirm: document.querySelector('#newPasswordConfirm'), resetPasswordMessage: document.querySelector('#resetPasswordMessage'), saveNewPasswordBtn: document.querySelector('#saveNewPasswordBtn'),
 };
 
 function currentMonthKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
@@ -54,6 +55,68 @@ function showAuthMessage(message, isError=false) {
   els.authMessage.hidden = false;
   els.authMessage.textContent = message;
   els.authMessage.classList.toggle('error', isError);
+}
+
+
+function currentAppUrl() {
+  return `${window.location.origin}${window.location.pathname}`;
+}
+
+async function sendMagicLink() {
+  const email = els.authEmail.value.trim();
+  if (!email) {
+    showAuthMessage('Сначала введи email.', true);
+    els.authEmail.focus();
+    return;
+  }
+  els.magicLinkBtn.disabled = true;
+  els.authMessage.hidden = true;
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: currentAppUrl(), shouldCreateUser: false }
+  });
+  els.magicLinkBtn.disabled = false;
+  if (error) return showAuthMessage(error.message, true);
+  showAuthMessage('Ссылка для входа отправлена на email. Открой письмо на этом устройстве и нажми ссылку.');
+}
+
+async function sendPasswordReset() {
+  const email = els.authEmail.value.trim();
+  if (!email) {
+    showAuthMessage('Сначала введи email.', true);
+    els.authEmail.focus();
+    return;
+  }
+  els.forgotPasswordBtn.disabled = true;
+  els.authMessage.hidden = true;
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: currentAppUrl() });
+  els.forgotPasswordBtn.disabled = false;
+  if (error) return showAuthMessage(error.message, true);
+  showAuthMessage('Письмо для сброса пароля отправлено. Открой его и нажми ссылку.');
+}
+
+function showResetMessage(message, isError=false) {
+  els.resetPasswordMessage.hidden = false;
+  els.resetPasswordMessage.textContent = message;
+  els.resetPasswordMessage.classList.toggle('error', isError);
+}
+
+async function saveNewPassword(e) {
+  e.preventDefault();
+  const password = els.newPassword.value;
+  const confirmPassword = els.newPasswordConfirm.value;
+  if (password.length < 6) return showResetMessage('Пароль должен быть минимум 6 символов.', true);
+  if (password !== confirmPassword) return showResetMessage('Пароли не совпадают.', true);
+  els.saveNewPasswordBtn.disabled = true;
+  const { error } = await sb.auth.updateUser({ password });
+  els.saveNewPasswordBtn.disabled = false;
+  if (error) return showResetMessage(error.message, true);
+  showResetMessage('Пароль изменён. Теперь можно входить с этим паролем.');
+  setTimeout(() => {
+    els.resetPasswordDialog.close();
+    els.newPassword.value = '';
+    els.newPasswordConfirm.value = '';
+  }, 900);
 }
 
 function classify(text, scope) {
@@ -289,6 +352,9 @@ function setAuthMode(mode) {
 
 document.querySelectorAll('.auth-tab').forEach(btn=>btn.addEventListener('click',()=>setAuthMode(btn.dataset.authMode)));
 els.authForm.addEventListener('submit', handleAuthSubmit);
+els.magicLinkBtn.addEventListener('click', sendMagicLink);
+els.forgotPasswordBtn.addEventListener('click', sendPasswordReset);
+els.resetPasswordForm.addEventListener('submit', saveNewPassword);
 els.logoutBtn.addEventListener('click', async()=>{ await sb.auth.signOut(); });
 els.addBtn.addEventListener('click', addExpenseFromInput);
 els.expenseInput.addEventListener('keydown', e => { if (e.key==='Enter') addExpenseFromInput(); });
@@ -297,7 +363,13 @@ els.deleteExpenseBtn.addEventListener('click', deleteExpense);
 els.refreshBtn.addEventListener('click', loadTransactions);
 document.querySelectorAll('.scope-btn').forEach(btn => btn.addEventListener('click', () => { state.scope=btn.dataset.scope; localStorage.setItem('budgetFlowScope',state.scope); render(); }));
 
-sb.auth.onAuthStateChange((_event, session)=>{ showApp(session); });
+sb.auth.onAuthStateChange((event, session)=>{
+  if (event === 'PASSWORD_RECOVERY') {
+    els.resetPasswordMessage.hidden = true;
+    els.resetPasswordDialog.showModal();
+  }
+  showApp(session);
+});
 (async()=>{ const { data } = await sb.auth.getSession(); await showApp(data.session); })();
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});

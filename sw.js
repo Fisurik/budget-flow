@@ -1,4 +1,4 @@
-const CACHE = 'budget-flow-v3-1';
+const CACHE = 'budget-flow-v3-2-authfix';
 const ASSETS = ['./','index.html','styles.css','app.js','manifest.json','icon.svg'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));

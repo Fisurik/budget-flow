@@ -30,6 +30,10 @@
         </label>
         <button id="authSubmitBtn" class="primary-btn" type="submit">Войти</button>
       </form>
+      <div class="auth-secondary-actions">
+        <button id="magicLinkBtn" class="link-btn auth-link-btn" type="button">Войти по ссылке на email</button>
+        <button id="forgotPasswordBtn" class="link-btn auth-link-btn" type="button">Забыли пароль?</button>
+      </div>
       <p id="authMessage" class="auth-message" hidden></p>
     </div>
   </section>
@@ -90,6 +94,23 @@
       <div id="transactions" class="transactions"></div>
     </section>
   </main>
+
+  <dialog id="resetPasswordDialog">
+    <form method="dialog" class="dialog-card" id="resetPasswordForm">
+      <h3>Новый пароль</h3>
+      <p class="muted reset-copy">Введите новый пароль для Budget Flow.</p>
+      <label>Новый пароль
+        <input id="newPassword" type="password" autocomplete="new-password" minlength="6" required placeholder="Минимум 6 символов" />
+      </label>
+      <label>Повторите пароль
+        <input id="newPasswordConfirm" type="password" autocomplete="new-password" minlength="6" required placeholder="Повторите пароль" />
+      </label>
+      <p id="resetPasswordMessage" class="auth-message" hidden></p>
+      <div class="dialog-actions">
+        <button id="saveNewPasswordBtn" class="primary-btn" value="default">Сохранить пароль</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="editDialog">
     <form method="dialog" class="dialog-card" id="editForm">
