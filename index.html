@@ -13,7 +13,7 @@
   <main class="app-shell">
     <header class="topbar">
       <div>
-        <p class="eyebrow">SEPTEMBER BUDGET</p>
+        <p class="eyebrow" id="monthLabel">MONTH BUDGET</p>
         <h1>Budget Flow</h1>
       </div>
       <button id="resetBtn" class="ghost-btn" aria-label="Сбросить месяц">Reset</button>
@@ -34,7 +34,8 @@
         <input id="expenseInput" autocomplete="off" placeholder="Publix 54 продукты" />
         <button id="addBtn" class="primary-btn">Добавить</button>
       </div>
-      <p class="hint">Примеры: “BP 40 gas”, “Chick-fil-A 28”, “Home Depot 120 materials”.</p>
+      <p class="hint">Можно сразу несколько: “Publix 80, BP 35, Chick-fil-A 22”.</p>
+      <p id="parsedPreview" class="success-note" hidden></p>
       <div class="scope-toggle" role="group" aria-label="Тип расхода">
         <button class="scope-btn active" data-scope="personal">Family</button>
         <button class="scope-btn" data-scope="business">Business</button>
@@ -60,7 +61,7 @@
 
   <dialog id="editDialog">
     <form method="dialog" class="dialog-card" id="editForm">
-      <h3>Проверить расход</h3>
+      <h3 id="dialogTitle">Проверить расход</h3>
       <label>Сумма
         <input id="editAmount" type="number" step="0.01" min="0" required />
       </label>
@@ -70,7 +71,9 @@
       <label>Описание
         <input id="editDescription" />
       </label>
-      <div class="dialog-actions">
+      <div class="dialog-actions split-actions">
+        <button id="deleteExpenseBtn" class="danger-btn" hidden>Удалить</button>
+        <span class="dialog-spacer"></span>
         <button value="cancel" class="ghost-btn">Отмена</button>
         <button id="saveExpenseBtn" value="default" class="primary-btn">Сохранить</button>
       </div>

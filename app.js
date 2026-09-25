@@ -15,12 +15,9 @@ const CATEGORY_DEFS = [
   { id:'other', name:'Other', icon:'📦', limit:330, scope:'personal', keywords:[] },
 ];
 
-let state = JSON.parse(localStorage.getItem('budgetFlowState') || 'null') || {
-  monthKey: currentMonthKey(),
-  transactions: [],
-  scope: 'personal'
-};
-if (state.monthKey !== currentMonthKey()) state = { monthKey: currentMonthKey(), transactions: [], scope:'personal' };
+const emptyState = () => ({ monthKey: currentMonthKey(), transactions: [], scope: 'personal' });
+let state = JSON.parse(localStorage.getItem('budgetFlowState') || 'null') || emptyState();
+if (state.monthKey !== currentMonthKey()) state = emptyState();
 
 const els = {
   remainingTotal: document.querySelector('#remainingTotal'),
@@ -35,9 +32,14 @@ const els = {
   editCategory: document.querySelector('#editCategory'),
   editDescription: document.querySelector('#editDescription'),
   saveExpenseBtn: document.querySelector('#saveExpenseBtn'),
+  dialogTitle: document.querySelector('#dialogTitle'),
+  deleteExpenseBtn: document.querySelector('#deleteExpenseBtn'),
+  parsedPreview: document.querySelector('#parsedPreview'),
+  monthLabel: document.querySelector('#monthLabel'),
 };
 
-let pendingExpense = null;
+let pendingExpenses = [];
+let editingId = null;
 
 function currentMonthKey() {
   const d = new Date();
@@ -47,12 +49,12 @@ function money(n) { return new Intl.NumberFormat('en-US',{style:'currency',curre
 function money2(n) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n); }
 function persist() { localStorage.setItem('budgetFlowState', JSON.stringify(state)); }
 function getCategory(id) { return CATEGORY_DEFS.find(c => c.id === id); }
+function uuid() { return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`; }
 
 function classify(text, scope) {
   const t = text.toLowerCase();
   const candidates = CATEGORY_DEFS.filter(c => c.scope === scope || (scope==='personal' && c.id==='other'));
-  let best = null;
-  let bestScore = 0;
+  let best = null, bestScore = 0;
   for (const c of candidates) {
     const score = c.keywords.reduce((acc,k) => acc + (t.includes(k.toLowerCase()) ? Math.max(1,k.length) : 0),0);
     if (score > bestScore) { best = c; bestScore = score; }
@@ -61,60 +63,104 @@ function classify(text, scope) {
   return best.id;
 }
 
-function parseExpense(text) {
+function parseSingleExpense(text, scope) {
   const matches = [...text.matchAll(/(?:\$\s*)?(\d+(?:[.,]\d{1,2})?)/g)];
   if (!matches.length) return null;
-  const amount = Number(matches[matches.length-1][1].replace(',','.'));
+  const m = matches[matches.length - 1];
+  const amount = Number(m[1].replace(',','.'));
   if (!Number.isFinite(amount) || amount <= 0) return null;
-  const description = text.replace(matches[matches.length-1][0], '').replace(/\s{2,}/g,' ').trim() || 'Expense';
-  return { amount, description, categoryId: classify(text, state.scope), scope: state.scope };
+  const description = `${text.slice(0,m.index)} ${text.slice((m.index || 0)+m[0].length)}`.replace(/\s{2,}/g,' ').trim() || 'Expense';
+  return { amount, description, categoryId: classify(text, scope), scope };
+}
+
+function parseExpenses(text) {
+  // Split on commas/semicolons/new lines only when each piece looks like it contains a number.
+  const rough = text.split(/[;\n]+|,(?=\s*[^,]*\d)/).map(s=>s.trim()).filter(Boolean);
+  const parsed = rough.map(part => parseSingleExpense(part, state.scope)).filter(Boolean);
+  if (parsed.length) return parsed;
+  const one = parseSingleExpense(text, state.scope);
+  return one ? [one] : [];
 }
 
 function addExpenseFromInput() {
   const raw = els.expenseInput.value.trim();
-  const parsed = parseExpense(raw);
-  if (!parsed) {
+  pendingExpenses = parseExpenses(raw);
+  if (!pendingExpenses.length) {
     els.expenseInput.focus();
     els.expenseInput.setCustomValidity('Добавь сумму, например: Publix 54');
     els.expenseInput.reportValidity();
     setTimeout(()=>els.expenseInput.setCustomValidity(''), 1200);
     return;
   }
-  pendingExpense = parsed;
-  openEditDialog(parsed);
+  if (pendingExpenses.length === 1) {
+    editingId = null;
+    openEditDialog(pendingExpenses[0], false);
+  } else {
+    const now = new Date().toISOString();
+    pendingExpenses.reverse().forEach(expense => state.transactions.unshift({ id:uuid(), ...expense, createdAt:now }));
+    persist();
+    els.expenseInput.value = '';
+    showParsedMessage(`Добавлено расходов: ${pendingExpenses.length}`);
+    pendingExpenses = [];
+    render();
+  }
 }
 
-function openEditDialog(expense) {
+function openEditDialog(expense, isEditing) {
   const categories = CATEGORY_DEFS.filter(c => c.scope === expense.scope || (expense.scope==='personal' && c.id==='other'));
   els.editCategory.innerHTML = categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
   els.editAmount.value = expense.amount;
   els.editDescription.value = expense.description;
   els.editCategory.value = expense.categoryId;
+  els.dialogTitle.textContent = isEditing ? 'Изменить расход' : 'Проверить расход';
+  els.deleteExpenseBtn.hidden = !isEditing;
   els.editDialog.showModal();
 }
 
 els.saveExpenseBtn.addEventListener('click', (e) => {
   e.preventDefault();
-  if (!pendingExpense) return;
   const amount = Number(els.editAmount.value);
   if (!Number.isFinite(amount) || amount <= 0) return;
-  state.transactions.unshift({
-    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-    amount,
-    description: els.editDescription.value.trim() || 'Expense',
-    categoryId: els.editCategory.value,
-    scope: pendingExpense.scope,
-    createdAt: new Date().toISOString()
-  });
+  if (editingId) {
+    const tx = state.transactions.find(t => t.id === editingId);
+    if (tx) {
+      tx.amount = amount;
+      tx.description = els.editDescription.value.trim() || 'Expense';
+      tx.categoryId = els.editCategory.value;
+    }
+  } else if (pendingExpenses[0]) {
+    const expense = pendingExpenses[0];
+    state.transactions.unshift({
+      id: uuid(), amount,
+      description: els.editDescription.value.trim() || 'Expense',
+      categoryId: els.editCategory.value,
+      scope: expense.scope,
+      createdAt: new Date().toISOString()
+    });
+  }
   persist();
   els.expenseInput.value = '';
-  pendingExpense = null;
+  pendingExpenses = [];
+  editingId = null;
   els.editDialog.close();
   render();
 });
 
+els.deleteExpenseBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (!editingId) return;
+  if (confirm('Удалить этот расход?')) {
+    state.transactions = state.transactions.filter(t => t.id !== editingId);
+    persist();
+    editingId = null;
+    els.editDialog.close();
+    render();
+  }
+});
+
 function render() {
   document.querySelectorAll('.scope-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.scope === state.scope));
+  els.monthLabel.textContent = new Date().toLocaleDateString('ru-RU',{month:'long',year:'numeric'}).toUpperCase();
 
   const personalCategories = CATEGORY_DEFS.filter(c => c.scope === 'personal');
   const budgetTotal = personalCategories.reduce((s,c) => s + c.limit, 0);
@@ -139,24 +185,39 @@ function render() {
     </article>`;
   }).join('');
 
-  const txs = state.transactions.slice(0,20);
+  const txs = state.transactions;
   els.transactions.innerHTML = txs.length ? txs.map(t => {
     const c = getCategory(t.categoryId);
     const when = new Date(t.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'});
-    return `<div class="transaction">
+    return `<button class="transaction" data-id="${t.id}" aria-label="Редактировать расход ${escapeHtml(t.description)}">
       <div><div class="transaction-title">${c?.icon || '•'} ${escapeHtml(t.description)}</div><div class="transaction-sub">${c?.name || 'Other'} · ${t.scope==='business'?'Business':'Family'} · ${when}</div></div>
-      <div class="transaction-amount">-${money2(t.amount)}</div>
-    </div>`;
+      <div class="transaction-right"><div class="transaction-amount">-${money2(t.amount)}</div><div class="edit-hint">Edit</div></div>
+    </button>`;
   }).join('') : '<div class="empty">Пока нет расходов. Добавь первый сверху.</div>';
+
+  els.transactions.querySelectorAll('.transaction').forEach(btn => btn.addEventListener('click', () => {
+    const tx = state.transactions.find(t => t.id === btn.dataset.id);
+    if (!tx) return;
+    editingId = tx.id;
+    pendingExpenses = [];
+    openEditDialog(tx, true);
+  }));
 }
 
-function escapeHtml(s) { return s.replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[ch])); }
+function showParsedMessage(message) {
+  els.parsedPreview.textContent = message;
+  els.parsedPreview.hidden = false;
+  clearTimeout(showParsedMessage.timer);
+  showParsedMessage.timer = setTimeout(()=>{ els.parsedPreview.hidden = true; },2200);
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[ch])); }
 
 els.addBtn.addEventListener('click', addExpenseFromInput);
 els.expenseInput.addEventListener('keydown', e => { if (e.key==='Enter') addExpenseFromInput(); });
 document.querySelectorAll('.scope-btn').forEach(btn => btn.addEventListener('click', () => { state.scope=btn.dataset.scope; persist(); render(); }));
 document.querySelector('#clearTransactionsBtn').addEventListener('click', () => { if (confirm('Удалить все записанные расходы за этот месяц?')) { state.transactions=[]; persist(); render(); } });
-document.querySelector('#resetBtn').addEventListener('click', () => { if (confirm('Сбросить бюджет этого месяца?')) { state={monthKey:currentMonthKey(),transactions:[],scope:'personal'}; persist(); render(); } });
+document.querySelector('#resetBtn').addEventListener('click', () => { if (confirm('Сбросить бюджет этого месяца?')) { state=emptyState(); persist(); render(); } });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 render();
