@@ -43,6 +43,7 @@ const state = {
   selectedMonth: monthKey(new Date()),
   reviewTransactions: [],
   reviewDismissed: false,
+  activeTab: localStorage.getItem('budgetFlowActiveTab') || 'budget',
   bankConnected: false,
   bankInstitutions: [],
   limits: Object.fromEntries(CATEGORY_DEFS.map(c => [c.id, c.limit]))
@@ -52,7 +53,7 @@ const els = Object.fromEntries([
   'authScreen','appShell','authForm','authEmail','authPassword','togglePasswordBtn','passwordHint','authSubmitBtn','authMessage','logoutBtn','userEmail','syncStatus','syncBadge','refreshBtn',
   'remainingTotal','spentTotal','budgetTotal','statBudget','statSpent','statLeft','monthSelect','exportMonthBtn','monthKpis','dailySpendChart','categoryReportBody','monthArchive','historySort','expenseInput','addBtn','repeatLastBtn','lastExpenseHint','categoryList','insights','transactions','historySearch','editDialog','editAmount','editCategory','editDescription',
   'saveExpenseBtn','dialogTitle','deleteExpenseBtn','parsedPreview','monthLabel','prevMonthBtn','nextMonthBtn','todayMonthBtn','historyFilter','editLimitDialog',
-  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn'
+  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn','reviewTabBadge','monthNavSection','budgetHeroSection','budgetStatsSection','budgetEntrySection','budgetCategoriesSection','analyticsExplorerSection','analyticsInsightsSection','historySection'
 ].map(id => [id, document.querySelector('#'+id)]));
 
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
@@ -144,11 +145,36 @@ function normalizeCsvRows(rows, fields){
 function showReviewNotice(message,kind='ok'){
   els.reviewNotice.hidden=false; els.reviewNotice.textContent=message; els.reviewNotice.classList.toggle('error',kind==='error'); els.reviewNotice.classList.toggle('success',kind==='ok');
 }
+function setActiveTab(tab,{scroll=true}={}){
+  const allowed=['review','budget','history','analytics'];
+  if(!allowed.includes(tab))tab='budget';
+  state.activeTab=tab;
+  localStorage.setItem('budgetFlowActiveTab',tab);
+  document.querySelectorAll('.app-tab').forEach(btn=>btn.classList.toggle('active',btn.dataset.appTab===tab));
+  els.reviewSection.hidden=tab!=='review';
+  els.dashboardContent.hidden=tab==='review';
+  if(tab!=='review'){
+    els.monthNavSection.hidden=false;
+    els.budgetHeroSection.hidden=tab!=='budget';
+    els.budgetStatsSection.hidden=tab!=='budget';
+    els.budgetEntrySection.hidden=tab!=='budget';
+    els.budgetCategoriesSection.hidden=tab!=='budget';
+    els.historySection.hidden=tab!=='history';
+    els.analyticsExplorerSection.hidden=tab!=='analytics';
+    els.analyticsInsightsSection.hidden=tab!=='analytics';
+  }
+  if(scroll)window.scrollTo({top:0,behavior:'smooth'});
+}
 function updatePrimaryView(forceReview=false){
   const hasPending=state.reviewTransactions.length>0;
-  const showReview=bankQueueAvailable&&hasPending&&(forceReview||!state.reviewDismissed);
-  els.reviewSection.hidden=!showReview; els.dashboardContent.hidden=showReview;
-  if(showReview) window.scrollTo({top:0,behavior:'smooth'});
+  els.reviewTabBadge.textContent=String(state.reviewTransactions.length);
+  els.reviewTabBadge.hidden=!hasPending;
+  if(bankQueueAvailable&&hasPending&&(forceReview||!state.reviewDismissed)){
+    setActiveTab('review');
+    return;
+  }
+  if(state.activeTab==='review'&&!hasPending)setActiveTab('budget',{scroll:false});
+  else setActiveTab(state.activeTab,{scroll:false});
 }
 async function loadReviewTransactions({forceReview=false}={}){
   if(!currentUser)return;
@@ -561,6 +587,7 @@ async function showApp(session){
   els.authPassword.value='';
   els.userEmail.textContent=currentUser.email||'';
   state.reviewDismissed=false;
+  setActiveTab(state.activeTab,{scroll:false});
   await migrateLocalExpensesOnce();
   await loadLimits();
   await loadBankStatus();
@@ -597,7 +624,8 @@ els.importCsvBtn.addEventListener('click',()=>els.bankCsvInput.click());
 els.reviewImportBtn.addEventListener('click',()=>els.bankCsvInput.click());
 els.bankCsvInput.addEventListener('change',()=>importBankCsv(els.bankCsvInput.files?.[0]));
 els.approveAllBtn.addEventListener('click',approveAllReview);
-els.openDashboardBtn.addEventListener('click',()=>{state.reviewDismissed=true;updatePrimaryView();});
+els.openDashboardBtn.addEventListener('click',()=>{state.reviewDismissed=true;setActiveTab('budget');});
+document.querySelectorAll('.app-tab').forEach(btn=>btn.addEventListener('click',()=>{state.reviewDismissed=btn.dataset.appTab!=='review';setActiveTab(btn.dataset.appTab);}));
 
 sb.auth.onAuthStateChange((_event,session)=>showApp(session));
 (async()=>{const {data}=await sb.auth.getSession();await showApp(data.session);})();
