@@ -14,8 +14,14 @@ const CATEGORY_DEFS = [
   { id:'insurance', name:'Insurance', icon:'🚗', limit:234.7, scope:'personal', keywords:['progressive','insurance','страховка'] },
   { id:'subscriptions', name:'Subscriptions', icon:'🎧', limit:110, scope:'personal', keywords:['apple','steam','boosty','fitness','subscription','подписка','gym'] },
   { id:'debt', name:'Debt / Affirm', icon:'💳', limit:74.8, scope:'personal', keywords:['affirm','debt','рассрочка','долг'] },
-  { id:'business_materials', name:'Business Materials', icon:'🧰', limit:0, scope:'business', keywords:['home depot','lowes','lowe’s','lowe','sherwin','paint','material','materials','материал','краска'] },
-  { id:'business_other', name:'Business Other', icon:'🧾', limit:0, scope:'business', keywords:['business','work','job','работа'] },
+  { id:'business_materials', name:'Materials', icon:'🧰', limit:0, scope:'business', keywords:['home depot','lowes','lowe’s','lowe','sherwin','paint','material','materials','материал','краска','drywall','lumber','tile'] },
+  { id:'business_tools', name:'Tools & Equipment', icon:'🛠️', limit:0, scope:'business', keywords:['tool','tools','equipment','harbor freight','dewalt','milwaukee','makita','инструмент'] },
+  { id:'business_fuel', name:'Business Fuel', icon:'⛽️', limit:0, scope:'business', keywords:['bp','shell','exxon','circle k','fuel','gas','бенз','бензин','заправка'] },
+  { id:'business_subcontractors', name:'Subcontractors / Labor', icon:'👷', limit:0, scope:'business', keywords:['subcontractor','labor','helper','crew','worker','zelle to david','david martiros','aik','haik','работник','помощник'] },
+  { id:'business_leads', name:'Leads & Advertising', icon:'📣', limit:0, scope:'business', keywords:['thumbtack','angi','homeadvisor','advertising','ad ','ads','lead','leads','реклама','лид'] },
+  { id:'business_subscriptions', name:'Business Subscriptions', icon:'💻', limit:0, scope:'business', keywords:['shopify','software','subscription','google workspace','microsoft','quickbooks','подписка бизнес'] },
+  { id:'business_fees', name:'Fees & Insurance', icon:'🧾', limit:0, scope:'business', keywords:['fee','fees','insurance','license','permit','bank fee','комиссия','страховка бизнес'] },
+  { id:'business_other', name:'Other Business', icon:'📦', limit:0, scope:'business', keywords:['business','work','job','работа'] },
   { id:'other', name:'Other', icon:'📦', limit:330, scope:'personal', keywords:[] },
 ];
 
@@ -144,16 +150,41 @@ async function loadReviewTransactions({forceReview=false}={}){
   if(error){bankQueueAvailable=false;state.reviewTransactions=[];console.warn('bank_transactions unavailable',error.message);els.importCsvBtn.disabled=true;els.importCsvBtn.title='Сначала запусти bank_transactions.sql в Supabase';updatePrimaryView();return;}
   bankQueueAvailable=true; els.importCsvBtn.disabled=false; state.reviewTransactions=(data||[]).map(r=>({...r,amount:Number(r.amount)})); renderReview(); updatePrimaryView(forceReview);
 }
-function reviewCategoryOptions(selected){return CATEGORY_DEFS.map(c=>`<option value="${c.id}" ${c.id===selected?'selected':''}>${c.icon} ${c.name}</option>`).join('');}
+function categoriesForReviewScope(scope){return CATEGORY_DEFS.filter(c=>c.scope===(scope==='business'?'business':'personal'));}
+function defaultCategoryForReviewScope(scope){return scope==='business'?'business_other':'other';}
+function reviewCategoryOptions(selected,scope){
+  const categories=categoriesForReviewScope(scope);
+  const valid=categories.some(c=>c.id===selected)?selected:defaultCategoryForReviewScope(scope);
+  return categories.map(c=>`<option value="${c.id}" ${c.id===valid?'selected':''}>${c.icon} ${c.name}</option>`).join('');
+}
 function renderReview(){
   const rows=state.reviewTransactions; els.reviewCount.textContent=rows.length; els.approveAllBtn.disabled=!rows.length;
   if(!rows.length){els.reviewList.innerHTML='<div class="empty"><div class="empty-icon">✅</div><div class="empty-title">Очередь разобрана</div><div>Новых банковских операций нет.</div></div>';return;}
-  els.reviewList.innerHTML=rows.map(r=>{const cat=r.suggested_category||'other';const scope=r.suggested_budget_type==='business'?'business':'family';return `<article class="review-card" data-review-id="${r.id}"><div class="review-card-head"><div><div class="review-merchant">${escapeHtml(r.description||r.merchant||'Bank transaction')}</div><div class="review-date">${escapeHtml(r.transaction_date)}</div></div><strong class="review-amount">-${money2(r.amount)}</strong></div><div class="review-fields"><label>Категория<select class="review-category">${reviewCategoryOptions(cat)}</select></label><label>Тип<select class="review-scope"><option value="family" ${scope==='family'?'selected':''}>Family</option><option value="business" ${scope==='business'?'selected':''}>Business</option></select></label></div><label class="review-description-label">Описание<input class="review-description" value="${escapeHtml(r.description||r.merchant||'')}" /></label><div class="review-card-actions"><button class="ghost-btn ignore-review-btn" type="button">Ignore</button><button class="primary-btn approve-review-btn" type="button">Approve</button></div></article>`;}).join('');
+  els.reviewList.innerHTML=rows.map(r=>{
+    const scope=r.suggested_budget_type==='business'?'business':'family';
+    const requestedCat=r.suggested_category||defaultCategoryForReviewScope(scope);
+    const validCat=categoriesForReviewScope(scope).some(c=>c.id===requestedCat)?requestedCat:defaultCategoryForReviewScope(scope);
+    if(validCat!==r.suggested_category) r.suggested_category=validCat;
+    return `<article class="review-card" data-review-id="${r.id}"><div class="review-card-head"><div><div class="review-merchant">${escapeHtml(r.description||r.merchant||'Bank transaction')}</div><div class="review-date">${escapeHtml(r.transaction_date)}</div></div><strong class="review-amount">-${money2(r.amount)}</strong></div><div class="review-fields"><label>Категория<select class="review-category">${reviewCategoryOptions(validCat,scope)}</select></label><label>Тип<select class="review-scope"><option value="family" ${scope==='family'?'selected':''}>Family</option><option value="business" ${scope==='business'?'selected':''}>Business</option></select></label></div><label class="review-description-label">Описание<input class="review-description" value="${escapeHtml(r.description||r.merchant||'')}" /></label><div class="review-card-actions"><button class="ghost-btn ignore-review-btn" type="button">Ignore</button><button class="primary-btn approve-review-btn" type="button">Approve</button></div></article>`;
+  }).join('');
   els.reviewList.querySelectorAll('.review-card').forEach(card=>{
     const id=card.dataset.reviewId; const row=state.reviewTransactions.find(x=>x.id===id); if(!row)return;
     const category=card.querySelector('.review-category'),scope=card.querySelector('.review-scope'),description=card.querySelector('.review-description');
-    category.addEventListener('change',async()=>{row.suggested_category=category.value;const c=getCategory(category.value);if(c){row.suggested_budget_type=c.scope==='business'?'business':'family';scope.value=row.suggested_budget_type;}await saveReviewSuggestion(row);});
-    scope.addEventListener('change',async()=>{row.suggested_budget_type=scope.value;await saveReviewSuggestion(row);});
+    category.addEventListener('change',async()=>{
+      row.suggested_category=category.value;
+      const c=getCategory(category.value);
+      if(c){row.suggested_budget_type=c.scope==='business'?'business':'family';scope.value=row.suggested_budget_type;}
+      await saveReviewSuggestion(row);
+    });
+    scope.addEventListener('change',async()=>{
+      row.suggested_budget_type=scope.value;
+      const expectedScope=scope.value==='business'?'business':'personal';
+      const current=getCategory(row.suggested_category);
+      if(!current||current.scope!==expectedScope) row.suggested_category=defaultCategoryForReviewScope(scope.value);
+      category.innerHTML=reviewCategoryOptions(row.suggested_category,scope.value);
+      category.value=row.suggested_category;
+      await saveReviewSuggestion(row);
+    });
     description.addEventListener('change',async()=>{row.description=description.value.trim()||row.merchant||'Bank transaction';await saveReviewSuggestion(row);});
     card.querySelector('.approve-review-btn').addEventListener('click',()=>approveReviewTransaction(id));
     card.querySelector('.ignore-review-btn').addEventListener('click',()=>ignoreReviewTransaction(id));
@@ -284,10 +315,11 @@ async function repeatLastExpense(){
 }
 
 function renderInsights(){
-  const personal=state.transactions.filter(t=>t.scope==='personal');
+  const activeScope=state.scope;
+  const scopedTransactions=state.transactions.filter(t=>t.scope===activeScope);
   const spentBy=new Map();
-  for(const t of personal) spentBy.set(t.categoryId,(spentBy.get(t.categoryId)||0)+t.amount);
-  const limited=CATEGORY_DEFS.filter(c=>c.scope==='personal'&&categoryLimit(c.id)>0).map(c=>({c,spent:spentBy.get(c.id)||0,limit:categoryLimit(c.id)}));
+  for(const t of scopedTransactions) spentBy.set(t.categoryId,(spentBy.get(t.categoryId)||0)+t.amount);
+  const limited=CATEGORY_DEFS.filter(c=>c.scope===activeScope&&categoryLimit(c.id)>0).map(c=>({c,spent:spentBy.get(c.id)||0,limit:categoryLimit(c.id)}));
   const over=limited.filter(x=>x.spent>x.limit).sort((a,b)=>(b.spent-b.limit)-(a.spent-a.limit));
   const near=limited.filter(x=>x.spent<=x.limit&&x.spent/x.limit>=.8).sort((a,b)=>(b.spent/b.limit)-(a.spent/a.limit));
   const ranked=[...limited].filter(x=>x.spent>0).sort((a,b)=>b.spent-a.spent).slice(0,5);
@@ -295,7 +327,7 @@ function renderInsights(){
   let status='good', title='Бюджет под контролем', copy='Ни одна категория с лимитом не достигла 80%.';
   if(over.length){status='danger'; title=`Превышен${over.length>1?'ы':''} ${over.length} лимит${over.length>1?'а':''}`; copy=over.slice(0,3).map(x=>`${x.c.icon} ${x.c.name}: +${money2(x.spent-x.limit)}`).join(' · ');}
   else if(near.length){status='warn'; title=`${near.length} категори${near.length===1?'я близка':'и близки'} к лимиту`; copy=near.slice(0,3).map(x=>`${x.c.icon} ${x.c.name}: ${Math.round(x.spent/x.limit*100)}%`).join(' · ');}
-  const ranking=ranked.length?`<div class="insight-card"><div class="insight-row"><div class="insight-title">Топ расходов</div><span class="muted">Family</span></div><div class="rank-list">${ranked.map(x=>`<div class="rank-item"><div class="rank-name">${x.c.icon} ${x.c.name}</div><strong>${money2(x.spent)}</strong><div class="rank-bar"><span style="width:${Math.max(4,Math.round(x.spent/max*100))}%"></span></div></div>`).join('')}</div></div>`:`<div class="insight-card"><div class="insight-title">Топ расходов</div><div class="insight-copy">Появится после первых расходов в этом месяце.</div></div>`;
+  const ranking=ranked.length?`<div class="insight-card"><div class="insight-row"><div class="insight-title">Топ расходов</div><span class="muted">${state.scope==='business'?'Business':'Family'}</span></div><div class="rank-list">${ranked.map(x=>`<div class="rank-item"><div class="rank-name">${x.c.icon} ${x.c.name}</div><strong>${money2(x.spent)}</strong><div class="rank-bar"><span style="width:${Math.max(4,Math.round(x.spent/max*100))}%"></span></div></div>`).join('')}</div></div>`:`<div class="insight-card"><div class="insight-title">Топ расходов</div><div class="insight-copy">Появится после первых расходов в этом месяце.</div></div>`;
   els.insights.innerHTML=`<div class="insight-card ${status}"><div class="insight-title">${title}</div><div class="insight-copy">${copy}</div></div>${ranking}`;
 }
 
@@ -319,8 +351,8 @@ function render(){
   document.querySelectorAll('.scope-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.scope===state.scope));
   document.querySelectorAll('.history-filter-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.historyScope===state.historyScope));
   const monthDate=selectedMonthDate(); els.monthLabel.textContent=monthDate.toLocaleDateString('ru-RU',{month:'long',year:'numeric'}).toUpperCase();
-  const personalCategories=CATEGORY_DEFS.filter(c=>c.scope==='personal'); const budgetTotal=personalCategories.reduce((s,c)=>s+categoryLimit(c.id),0); const personalSpent=state.transactions.filter(t=>t.scope==='personal').reduce((s,t)=>s+t.amount,0);
-  const left=budgetTotal-personalSpent; els.remainingTotal.textContent=money(left); els.spentTotal.textContent=`Потрачено ${money(personalSpent)}`; els.budgetTotal.textContent=`Бюджет ${money(budgetTotal)}`; els.statBudget.textContent=money(budgetTotal); els.statSpent.textContent=money(personalSpent); els.statLeft.textContent=money(left); els.statLeft.classList.toggle('negative',left<0);
+  const activeCategories=CATEGORY_DEFS.filter(c=>c.scope===state.scope); const budgetTotal=activeCategories.reduce((s,c)=>s+categoryLimit(c.id),0); const scopedSpent=state.transactions.filter(t=>t.scope===state.scope).reduce((s,t)=>s+t.amount,0);
+  const left=budgetTotal-scopedSpent; els.remainingTotal.textContent=money(left); els.spentTotal.textContent=`Потрачено ${money(scopedSpent)}`; els.budgetTotal.textContent=`Бюджет ${money(budgetTotal)}`; els.statBudget.textContent=money(budgetTotal); els.statSpent.textContent=money(scopedSpent); els.statLeft.textContent=money(left); els.statLeft.classList.toggle('negative',left<0);
   const visible=CATEGORY_DEFS.filter(c=>c.scope===state.scope);
   els.categoryList.innerHTML=visible.map(c=>{const limit=categoryLimit(c.id),spent=state.transactions.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0),remaining=limit>0?limit-spent:null,rawPct=limit>0?(spent/limit)*100:0,pct=Math.min(100,rawPct),cls=rawPct>=100?'danger':rawPct>=80?'warn':'',cardCls=rawPct>=100?'over-budget':rawPct>=80?'near-limit':'',note=rawPct>=100?`<div class="limit-note danger">Превышение ${money2(spent-limit)}</div>`:rawPct>=80?`<div class="limit-note warn">Осталось ${money2(remaining)}</div>`:'';return `<article class="category-card ${cardCls}"><div class="category-head"><div><div class="category-name">${c.icon} ${c.name}</div><div class="category-meta">Потрачено ${money2(spent)}${limit>0?` из ${money2(limit)}`:''}</div>${note}</div><div class="category-actions"><div class="category-remaining">${limit>0?`${money2(remaining)} left`:money2(spent)}</div><button class="mini-btn edit-limit-btn" data-category="${c.id}">Лимит</button></div></div>${limit>0?`<div class="progress"><div class="${cls}" style="width:${pct}%"></div></div>`:''}</article>`;}).join('');
   els.categoryList.querySelectorAll('.edit-limit-btn').forEach(b=>b.addEventListener('click',()=>openLimitDialog(b.dataset.category)));
