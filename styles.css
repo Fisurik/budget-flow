@@ -193,3 +193,10 @@ dialog::backdrop { background:rgba(15,23,42,.5); }
 /* v8.2 tabbed navigation */
 .app-tabs{position:sticky;top:0;z-index:20;display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin:0 0 14px;padding:5px;background:rgba(241,245,249,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(203,213,225,.7);border-radius:16px}.app-tab{position:relative;border:0;background:transparent;color:var(--muted);border-radius:12px;padding:10px 9px;font-size:12px;font-weight:750;transition:.18s ease}.app-tab:hover{color:var(--text)}.app-tab.active{background:#fff;color:var(--text);box-shadow:0 2px 8px rgba(15,23,42,.08)}.tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:4px;border-radius:99px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;vertical-align:middle}.app-tab[data-app-tab="review"].active .tab-badge{background:#dc2626}
 @media(max-width:520px){.app-shell{padding-bottom:86px}.app-tabs{position:fixed;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));top:auto;margin:0;border-radius:18px;box-shadow:0 12px 34px rgba(15,23,42,.18);background:rgba(255,255,255,.94);z-index:50}.app-tab{padding:11px 5px;font-size:11px}.tab-badge{position:absolute;top:4px;right:8px;margin:0}.month-nav{margin-top:2px}}
+
+/* v8.3 real tab panels */
+[hidden]{display:none!important}
+.app-tab-panel{display:block}
+.app-tab-panel[hidden]{display:none!important}
+.app-tab-panel.active{animation:tabFade .16s ease}
+@keyframes tabFade{from{opacity:.55;transform:translateY(3px)}to{opacity:1;transform:none}}

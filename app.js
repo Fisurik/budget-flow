@@ -53,7 +53,7 @@ const els = Object.fromEntries([
   'authScreen','appShell','authForm','authEmail','authPassword','togglePasswordBtn','passwordHint','authSubmitBtn','authMessage','logoutBtn','userEmail','syncStatus','syncBadge','refreshBtn',
   'remainingTotal','spentTotal','budgetTotal','statBudget','statSpent','statLeft','monthSelect','exportMonthBtn','monthKpis','dailySpendChart','categoryReportBody','monthArchive','historySort','expenseInput','addBtn','repeatLastBtn','lastExpenseHint','categoryList','insights','transactions','historySearch','editDialog','editAmount','editCategory','editDescription',
   'saveExpenseBtn','dialogTitle','deleteExpenseBtn','parsedPreview','monthLabel','prevMonthBtn','nextMonthBtn','todayMonthBtn','historyFilter','editLimitDialog',
-  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn','reviewTabBadge','monthNavSection','budgetHeroSection','budgetStatsSection','budgetEntrySection','budgetCategoriesSection','analyticsExplorerSection','analyticsInsightsSection','historySection'
+  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn','reviewTabBadge','monthNavSection','budgetTabPanel','historyTabPanel','analyticsTabPanel','budgetHeroSection','budgetStatsSection','budgetEntrySection','budgetCategoriesSection','analyticsExplorerSection','analyticsInsightsSection','historySection'
 ].map(id => [id, document.querySelector('#'+id)]));
 
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
@@ -155,13 +155,10 @@ function setActiveTab(tab,{scroll=true}={}){
   els.dashboardContent.hidden=tab==='review';
   if(tab!=='review'){
     els.monthNavSection.hidden=false;
-    els.budgetHeroSection.hidden=tab!=='budget';
-    els.budgetStatsSection.hidden=tab!=='budget';
-    els.budgetEntrySection.hidden=tab!=='budget';
-    els.budgetCategoriesSection.hidden=tab!=='budget';
-    els.historySection.hidden=tab!=='history';
-    els.analyticsExplorerSection.hidden=tab!=='analytics';
-    els.analyticsInsightsSection.hidden=tab!=='analytics';
+    els.budgetTabPanel.hidden=tab!=='budget';
+    els.historyTabPanel.hidden=tab!=='history';
+    els.analyticsTabPanel.hidden=tab!=='analytics';
+    [els.budgetTabPanel,els.historyTabPanel,els.analyticsTabPanel].forEach(panel=>panel?.classList.toggle('active',panel?.dataset.tabPanel===tab));
   }
   if(scroll)window.scrollTo({top:0,behavior:'smooth'});
 }
