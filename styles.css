@@ -200,3 +200,21 @@ dialog::backdrop { background:rgba(15,23,42,.5); }
 .app-tab-panel[hidden]{display:none!important}
 .app-tab-panel.active{animation:tabFade .16s ease}
 @keyframes tabFade{from{opacity:.55;transform:translateY(3px)}to{opacity:1;transform:none}}
+
+/* v8.4 hard tab isolation: only the selected page can render */
+.tab-page{display:none!important}
+.tab-page.is-active{display:block!important}
+#reviewSection.tab-page.is-active{display:grid!important}
+#dashboardContent[hidden]{display:none!important}
+body[data-active-tab="review"] #dashboardContent{display:none!important}
+body[data-active-tab="review"] #reviewSection{display:grid!important}
+body:not([data-active-tab="review"]) #reviewSection{display:none!important}
+body[data-active-tab="budget"] #budgetTabPanel{display:block!important}
+body[data-active-tab="history"] #historyTabPanel{display:block!important}
+body[data-active-tab="analytics"] #analyticsTabPanel{display:block!important}
+body[data-active-tab="budget"] #historyTabPanel,
+body[data-active-tab="budget"] #analyticsTabPanel,
+body[data-active-tab="history"] #budgetTabPanel,
+body[data-active-tab="history"] #analyticsTabPanel,
+body[data-active-tab="analytics"] #budgetTabPanel,
+body[data-active-tab="analytics"] #historyTabPanel{display:none!important}

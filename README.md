@@ -1,10 +1,11 @@
-# Budget Flow v8.3 — Real Tabs Fix
+# Budget Flow v8.4 — Hard-isolated tabs
 
-Исправление вкладок:
-- Review: только очередь банковских транзакций
-- Budget: сводка, быстрый ввод и категории
-- History: только история операций выбранного месяца
-- Analytics: Monthly Explorer, график, таблица категорий, архив месяцев и insights
+Fixes tab content leaking/repeating across Review, Budget, History, and Analytics.
 
-Вкладки теперь используют отдельные tab panels, а не просто переключают отдельные секции внутри общей длинной страницы.
-Новых SQL-миграций не требуется.
+- Review: only review queue
+- Budget: only budget summary, quick entry, categories
+- History: only monthly transaction history
+- Analytics: only Monthly Explorer, charts, category table, archive and insights
+- Cache-busted CSS/JS and updated service worker to avoid iPhone Safari serving mixed old/new assets.
+
+No Supabase schema changes required.

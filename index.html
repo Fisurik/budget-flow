@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0f172a" />
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=8.4" />
   <title>Budget Flow</title>
 </head>
 <body>
@@ -32,7 +32,7 @@
 
     <input id="bankCsvInput" type="file" accept=".csv,text/csv" hidden />
 
-    <section id="reviewSection" class="review-shell" hidden>
+    <section id="reviewSection" class="review-shell tab-page" data-tab-page="review" hidden>
       <div class="review-hero">
         <div>
           <p class="eyebrow">REVIEW TRANSACTIONS</p>
@@ -52,7 +52,7 @@
     <div id="dashboardContent">
     <section id="monthNavSection" class="month-nav"><button id="prevMonthBtn" class="nav-btn" aria-label="Предыдущий месяц">←</button><button id="todayMonthBtn" class="month-center">Текущий месяц</button><button id="nextMonthBtn" class="nav-btn" aria-label="Следующий месяц">→</button></section>
 
-      <section id="budgetTabPanel" class="app-tab-panel active" data-tab-panel="budget">
+      <section id="budgetTabPanel" class="app-tab-panel tab-page is-active" data-tab-panel="budget" data-tab-page="budget">
     <section id="budgetHeroSection" class="hero-card"><p class="muted">Осталось в этом месяце</p><div id="remainingTotal" class="hero-amount">$0</div><div class="hero-row"><span id="spentTotal">Потрачено $0</span><span id="budgetTotal">Бюджет $0</span></div></section>
 
     <section id="budgetStatsSection" class="stats-grid" aria-label="Сводка бюджета">
@@ -66,11 +66,11 @@
     <section id="budgetCategoriesSection"><div class="section-title-row"><h2>Категории</h2><span class="muted">нажми «Лимит», чтобы изменить</span></div><div id="categoryList" class="category-list"></div></section>
       </section>
 
-      <section id="historyTabPanel" class="app-tab-panel" data-tab-panel="history" hidden>
+      <section id="historyTabPanel" class="app-tab-panel tab-page" data-tab-panel="history" data-tab-page="history" hidden>
     <section id="historySection"><div class="section-title-row history-title"><div><h2>История</h2><span class="muted">операции выбранного месяца</span></div><button id="refreshBtn" class="link-btn">Обновить</button></div><div class="history-toolbar"><div class="history-filters"><button class="history-filter-btn active" data-history-scope="all">All</button><button class="history-filter-btn" data-history-scope="personal">Family</button><button class="history-filter-btn" data-history-scope="business">Business</button></div><div class="history-controls"><input id="historySearch" class="history-search" type="search" placeholder="Поиск по истории" autocomplete="off" /><select id="historySort" class="history-sort"><option value="date_desc">Новые сначала</option><option value="date_asc">Старые сначала</option><option value="amount_desc">Сначала большие</option><option value="amount_asc">Сначала маленькие</option><option value="name_asc">По названию</option></select><div class="view-toggle"><button class="view-btn active" data-history-view="table">Table</button><button class="view-btn" data-history-view="days">Days</button></div></div></div><div id="transactions" class="transactions"></div></section>
       </section>
 
-      <section id="analyticsTabPanel" class="app-tab-panel" data-tab-panel="analytics" hidden>
+      <section id="analyticsTabPanel" class="app-tab-panel tab-page" data-tab-panel="analytics" data-tab-page="analytics" hidden>
     <section id="analyticsExplorerSection" class="monthly-explorer">
       <div class="section-title-row monthly-heading"><div><h2>Monthly Explorer</h2><span class="muted">история, таблицы и тренды по месяцам</span></div><div class="monthly-actions"><select id="monthSelect" class="compact-select" aria-label="Выбрать месяц"></select><button id="exportMonthBtn" class="ghost-btn" type="button">Export CSV</button></div></div>
       <div class="report-scope-toggle"><button class="report-scope-btn active" data-report-scope="all">All</button><button class="report-scope-btn" data-report-scope="personal">Family</button><button class="report-scope-btn" data-report-scope="business">Business</button></div>
@@ -91,5 +91,5 @@
 
   <dialog id="editLimitDialog"><form method="dialog" class="dialog-card"><h3 id="limitCategoryName">Лимит</h3><label>Месячный лимит<input id="limitAmount" type="number" step="0.01" min="0" required /></label><p class="hint">0 = без лимита. Изменение применяется ко всем месяцам.</p><div class="dialog-actions split-actions"><button id="resetLimitBtn" class="ghost-btn">Сбросить</button><span class="dialog-spacer"></span><button value="cancel" class="ghost-btn">Отмена</button><button id="saveLimitBtn" value="default" class="primary-btn">Сохранить</button></div></form></dialog>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script><script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script><script src="app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script><script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script><script src="app.js?v=8.4"></script>
 </body></html>

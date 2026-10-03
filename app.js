@@ -150,16 +150,21 @@ function setActiveTab(tab,{scroll=true}={}){
   if(!allowed.includes(tab))tab='budget';
   state.activeTab=tab;
   localStorage.setItem('budgetFlowActiveTab',tab);
+  document.body.dataset.activeTab=tab;
   document.querySelectorAll('.app-tab').forEach(btn=>btn.classList.toggle('active',btn.dataset.appTab===tab));
-  els.reviewSection.hidden=tab!=='review';
+
+  const pages=[els.reviewSection,els.budgetTabPanel,els.historyTabPanel,els.analyticsTabPanel];
+  pages.forEach(page=>{
+    if(!page)return;
+    const pageName=page.dataset.tabPage || page.dataset.tabPanel || (page===els.reviewSection?'review':'');
+    const active=pageName===tab;
+    page.hidden=!active;
+    page.classList.toggle('is-active',active);
+    page.classList.toggle('active',active);
+  });
+
   els.dashboardContent.hidden=tab==='review';
-  if(tab!=='review'){
-    els.monthNavSection.hidden=false;
-    els.budgetTabPanel.hidden=tab!=='budget';
-    els.historyTabPanel.hidden=tab!=='history';
-    els.analyticsTabPanel.hidden=tab!=='analytics';
-    [els.budgetTabPanel,els.historyTabPanel,els.analyticsTabPanel].forEach(panel=>panel?.classList.toggle('active',panel?.dataset.tabPanel===tab));
-  }
+  els.monthNavSection.hidden=tab==='review';
   if(scroll)window.scrollTo({top:0,behavior:'smooth'});
 }
 function updatePrimaryView(forceReview=false){
