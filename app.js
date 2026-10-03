@@ -205,9 +205,33 @@ function render(){
   renderInsights(); renderHistory();
 }
 
+function setSignedInView(isSignedIn){
+  els.authScreen.hidden = isSignedIn;
+  els.appShell.hidden = !isSignedIn;
+  els.authScreen.classList.toggle('is-hidden', isSignedIn);
+  els.appShell.classList.toggle('is-hidden', !isSignedIn);
+}
+
 async function showApp(session){
-  currentUser=session?.user||null; if(!currentUser){els.authScreen.hidden=false;els.appShell.hidden=true;return;}
-  els.authScreen.hidden=true;els.appShell.hidden=false;els.userEmail.textContent=currentUser.email||''; await migrateLocalExpensesOnce(); await loadLimits(); await loadTransactions();
+  currentUser=session?.user||null;
+  if(!currentUser){
+    state.transactions=[];
+    setSignedInView(false);
+    setAuthMode('login');
+    els.authPassword.value='';
+    els.authPassword.type='password';
+    els.togglePasswordBtn.textContent='👁';
+    els.userEmail.textContent='';
+    return;
+  }
+  // Hide the login/registration card immediately. Cloud loading continues behind the app UI.
+  setSignedInView(true);
+  els.authMessage.hidden=true;
+  els.authPassword.value='';
+  els.userEmail.textContent=currentUser.email||'';
+  await migrateLocalExpensesOnce();
+  await loadLimits();
+  await loadTransactions();
 }
 function containsCyrillic(value){return /[\u0400-\u04FF\u0500-\u052F]/.test(value);}
 function updatePasswordGuard(){const has=containsCyrillic(els.authPassword.value);els.passwordHint.classList.toggle('warning',has);if(authMode==='signup'&&has){els.authPassword.setCustomValidity('Кириллица в пароле запрещена. Переключи клавиатуру на English.');}else{els.authPassword.setCustomValidity('');}if(has&&authMode==='login'){els.passwordHint.textContent='В пароле есть кириллица. Для старого аккаунта вход разрешён, но новый пароль лучше сделать латиницей.';}else{els.passwordHint.textContent='При регистрации используйте только латинские буквы, цифры и символы.';}}
@@ -217,7 +241,7 @@ function setAuthMode(mode){authMode=mode;document.querySelectorAll('.auth-tab').
 document.querySelectorAll('.auth-tab').forEach(btn=>btn.addEventListener('click',()=>setAuthMode(btn.dataset.authMode)));
 els.togglePasswordBtn.addEventListener('click',()=>{const reveal=els.authPassword.type==='password';els.authPassword.type=reveal?'text':'password';els.togglePasswordBtn.textContent=reveal?'🙈':'👁';els.togglePasswordBtn.setAttribute('aria-label',reveal?'Скрыть пароль':'Показать пароль');els.togglePasswordBtn.title=reveal?'Скрыть пароль':'Показать пароль';els.authPassword.focus();});
 els.authPassword.addEventListener('input',updatePasswordGuard);
-els.authForm.addEventListener('submit',handleAuthSubmit); els.logoutBtn.addEventListener('click',async()=>{await sb.auth.signOut();});
+els.authForm.addEventListener('submit',handleAuthSubmit); els.logoutBtn.addEventListener('click',async()=>{els.logoutBtn.disabled=true;await sb.auth.signOut();els.logoutBtn.disabled=false;await showApp(null);});
 els.addBtn.addEventListener('click',addExpenseFromInput); els.expenseInput.addEventListener('keydown',e=>{if(e.key==='Enter')addExpenseFromInput();}); els.repeatLastBtn.addEventListener('click',repeatLastExpense);
 els.saveExpenseBtn.addEventListener('click',saveDialogExpense); els.deleteExpenseBtn.addEventListener('click',deleteExpense); els.refreshBtn.addEventListener('click',async()=>{await loadLimits();await loadTransactions();});
 document.querySelectorAll('.scope-btn').forEach(btn=>btn.addEventListener('click',()=>{state.scope=btn.dataset.scope;localStorage.setItem('budgetFlowScope',state.scope);render();}));

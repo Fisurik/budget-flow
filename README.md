@@ -11,3 +11,7 @@ Cloud-first personal/business budget tracker with Supabase.
 - Improved empty states and mobile polish
 
 Upload the files in this folder to the repository root. Vercel will redeploy automatically.
+
+
+## v5.1 auth visibility
+The login/registration screen is hidden after a valid session is detected and only returns after sign out. Both auth and app shells stay hidden until the initial Supabase session check completes, preventing auth-screen flashes.

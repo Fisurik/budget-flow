@@ -10,7 +10,7 @@
   <title>Budget Flow</title>
 </head>
 <body>
-  <section id="authScreen" class="auth-shell">
+  <section id="authScreen" class="auth-shell is-hidden" hidden>
     <div class="auth-card">
       <p class="eyebrow">BUDGET FLOW CLOUD</p><h1>Твой бюджет в облаке</h1><p class="auth-copy">Войди, чтобы расходы синхронизировались между телефоном и компьютером.</p>
       <div class="auth-tabs"><button class="auth-tab active" data-auth-mode="login">Войти</button><button class="auth-tab" data-auth-mode="signup">Регистрация</button></div>
@@ -19,7 +19,7 @@
     </div>
   </section>
 
-  <main id="appShell" class="app-shell" hidden>
+  <main id="appShell" class="app-shell is-hidden" hidden>
     <header class="topbar"><div><p class="eyebrow" id="monthLabel">MONTH BUDGET</p><h1>Budget Flow</h1></div><div class="top-actions"><span id="syncBadge" class="sync-badge">Cloud</span><button id="logoutBtn" class="ghost-btn">Выйти</button></div></header>
     <div class="account-row"><span id="userEmail" class="muted"></span><span id="syncStatus" class="muted">Синхронизировано</span></div>
 
