@@ -36,6 +36,10 @@ const state = {
   scope: localStorage.getItem('budgetFlowScope') || 'personal',
   historyScope: 'all',
   historySearch: '',
+  historySort: 'date_desc',
+  historyView: 'table',
+  reportScope: 'all',
+  archiveTransactions: [],
   selectedMonth: monthKey(new Date()),
   reviewTransactions: [],
   reviewDismissed: false,
@@ -46,7 +50,7 @@ const state = {
 
 const els = Object.fromEntries([
   'authScreen','appShell','authForm','authEmail','authPassword','togglePasswordBtn','passwordHint','authSubmitBtn','authMessage','logoutBtn','userEmail','syncStatus','syncBadge','refreshBtn',
-  'remainingTotal','spentTotal','budgetTotal','statBudget','statSpent','statLeft','expenseInput','addBtn','repeatLastBtn','lastExpenseHint','categoryList','insights','transactions','historySearch','editDialog','editAmount','editCategory','editDescription',
+  'remainingTotal','spentTotal','budgetTotal','statBudget','statSpent','statLeft','monthSelect','exportMonthBtn','monthKpis','dailySpendChart','categoryReportBody','monthArchive','historySort','expenseInput','addBtn','repeatLastBtn','lastExpenseHint','categoryList','insights','transactions','historySearch','editDialog','editAmount','editCategory','editDescription',
   'saveExpenseBtn','dialogTitle','deleteExpenseBtn','parsedPreview','monthLabel','prevMonthBtn','nextMonthBtn','todayMonthBtn','historyFilter','editLimitDialog',
   'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn'
 ].map(id => [id, document.querySelector('#'+id)]));
@@ -314,7 +318,7 @@ async function loadTransactions(){
   const [start,end]=monthBoundsFromKey(state.selectedMonth);
   const {data,error}=await sb.from('expenses').select('*').gte('spent_at',start).lt('spent_at',end).order('spent_at',{ascending:false}).order('created_at',{ascending:false});
   if(error){console.error(error);setSyncStatus('Ошибка синхронизации','error');return;}
-  state.transactions=(data||[]).map(fromCloudRow); setSyncStatus('Синхронизировано'); render();
+  state.transactions=(data||[]).map(fromCloudRow); state.archiveTransactions=[...state.archiveTransactions.filter(t=>(t.spentAt||'').slice(0,7)!==state.selectedMonth),...state.transactions]; setSyncStatus('Синхронизировано'); render();
 }
 
 async function migrateLocalExpensesOnce(){
@@ -385,6 +389,93 @@ async function repeatLastExpense(){
   showParsedMessage(`Повторено: ${last.description} · ${money2(last.amount)}`); await loadTransactions();
 }
 
+
+function reportTransactions(){
+  return state.transactions.filter(t=>state.reportScope==='all'||t.scope===state.reportScope);
+}
+function monthLabelFromKey(key){
+  const [y,m]=key.split('-').map(Number);
+  return new Date(y,m-1,1).toLocaleDateString('ru-RU',{month:'long',year:'numeric'});
+}
+function monthKeyShift(key,delta){
+  const [y,m]=key.split('-').map(Number);return monthKey(new Date(y,m-1+delta,1));
+}
+function renderMonthSelect(){
+  if(!els.monthSelect)return;
+  const current=monthKey(new Date());
+  const keys=[];
+  for(let i=0;i<18;i++) keys.push(monthKeyShift(current,-i));
+  if(!keys.includes(state.selectedMonth)) keys.push(state.selectedMonth);
+  keys.sort((a,b)=>b.localeCompare(a));
+  els.monthSelect.innerHTML=keys.map(k=>`<option value="${k}" ${k===state.selectedMonth?'selected':''}>${escapeHtml(monthLabelFromKey(k))}</option>`).join('');
+}
+function scopeBudgetTotal(scope){
+  const cats=CATEGORY_DEFS.filter(c=>scope==='all'||c.scope===scope);
+  return cats.reduce((s,c)=>s+categoryLimit(c.id),0);
+}
+function renderMonthlyExplorer(){
+  if(!els.monthKpis)return;
+  renderMonthSelect();
+  document.querySelectorAll('.report-scope-btn').forEach(b=>b.classList.toggle('active',b.dataset.reportScope===state.reportScope));
+  const txs=reportTransactions();
+  const total=txs.reduce((s,t)=>s+t.amount,0);
+  const count=txs.length;
+  const budget=scopeBudgetTotal(state.reportScope);
+  const left=budget-total;
+  const largest=txs.slice().sort((a,b)=>b.amount-a.amount)[0];
+  const daysWithSpend=new Set(txs.map(t=>t.spentAt)).size||1;
+  const avg=total/daysWithSpend;
+  const prevKey=monthKeyShift(state.selectedMonth,-1);
+  const prev=state.archiveTransactions.filter(t=>(t.spentAt||'').slice(0,7)===prevKey&&(state.reportScope==='all'||t.scope===state.reportScope));
+  const prevTotal=prev.reduce((s,t)=>s+t.amount,0);
+  const delta=prevTotal?((total-prevTotal)/prevTotal)*100:null;
+  els.monthKpis.innerHTML=`
+    <article class="month-kpi"><span>Spent</span><strong>${money2(total)}</strong><small>${delta===null?'нет сравнения':`${delta>=0?'▲':'▼'} ${Math.abs(delta).toFixed(0)}% vs прошлый месяц`}</small></article>
+    <article class="month-kpi"><span>Transactions</span><strong>${count}</strong><small>${daysWithSpend} активных дней</small></article>
+    <article class="month-kpi"><span>Avg / day</span><strong>${money2(avg)}</strong><small>по дням с расходами</small></article>
+    <article class="month-kpi"><span>${budget>0?'Left':'Largest'}</span><strong class="${budget>0&&left<0?'negative':''}">${budget>0?money2(left):money2(largest?.amount||0)}</strong><small>${budget>0?`из ${money2(budget)}`:(largest?escapeHtml(largest.description):'—')}</small></article>`;
+
+  // Daily bar chart
+  const [y,m]=state.selectedMonth.split('-').map(Number); const daysInMonth=new Date(y,m,0).getDate();
+  const byDay=new Map(); txs.forEach(t=>{const d=Number((t.spentAt||'').slice(8,10)); if(d)byDay.set(d,(byDay.get(d)||0)+t.amount);});
+  const max=Math.max(1,...byDay.values());
+  els.dailySpendChart.innerHTML=Array.from({length:daysInMonth},(_,i)=>i+1).map(d=>{const v=byDay.get(d)||0;const h=v?Math.max(5,Math.round(v/max*100)):2;return `<div class="day-bar-wrap" title="${d}: ${money2(v)}"><div class="day-bar ${v?'has-value':''}" style="height:${h}%"></div><span>${d===1||d%5===0||d===daysInMonth?d:''}</span></div>`;}).join('');
+
+  // Category table
+  const categoryRows=CATEGORY_DEFS.filter(c=>state.reportScope==='all'||c.scope===state.reportScope).map(c=>{
+    const spent=txs.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0); const limit=categoryLimit(c.id); const rem=limit-spent; const pct=limit>0?Math.round(spent/limit*100):null;
+    return {c,spent,limit,rem,pct};
+  }).filter(x=>x.spent>0||x.limit>0).sort((a,b)=>b.spent-a.spent);
+  els.categoryReportBody.innerHTML=categoryRows.length?categoryRows.map(x=>`<tr><td><div class="table-category">${x.c.icon} <span>${escapeHtml(x.c.name)}</span><small>${x.c.scope==='business'?'Business':'Family'}</small></div></td><td>${x.limit?money2(x.limit):'—'}</td><td><strong>${money2(x.spent)}</strong></td><td class="${x.limit&&x.rem<0?'negative':''}">${x.limit?money2(x.rem):'—'}</td><td>${x.pct===null?'<span class="pill neutral">No limit</span>':`<div class="usage-cell"><span class="pill ${x.pct>=100?'danger':x.pct>=80?'warn':'good'}">${x.pct}%</span><div class="tiny-progress"><span style="width:${Math.min(100,x.pct)}%"></span></div></div>`}</td></tr>`).join(''):`<tr><td colspan="5" class="table-empty">В этом месяце пока нет расходов.</td></tr>`;
+
+  // Archive cards, 12 months
+  const current=monthKey(new Date());
+  const archiveKeys=Array.from({length:12},(_,i)=>monthKeyShift(current,-i));
+  els.monthArchive.innerHTML=archiveKeys.map(k=>{
+    const rows=state.archiveTransactions.filter(t=>(t.spentAt||'').slice(0,7)===k&&(state.reportScope==='all'||t.scope===state.reportScope));
+    const spent=rows.reduce((s,t)=>s+t.amount,0); const active=k===state.selectedMonth?'active':'';
+    return `<button class="archive-month ${active}" data-month="${k}"><span>${escapeHtml(monthLabelFromKey(k))}</span><strong>${money2(spent)}</strong><small>${rows.length} операций</small></button>`;
+  }).join('');
+  els.monthArchive.querySelectorAll('.archive-month').forEach(b=>b.addEventListener('click',()=>selectMonth(b.dataset.month)));
+}
+function exportCurrentMonthCsv(){
+  const txs=reportTransactions();
+  if(!txs.length){showParsedMessage('В выбранном месяце нечего экспортировать');return;}
+  const rows=[['Date','Description','Category','Budget type','Amount'],...txs.map(t=>[t.spentAt,t.description,getCategory(t.categoryId)?.name||'Other',t.scope==='business'?'Business':'Family',t.amount.toFixed(2)])];
+  const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`budget-flow-${state.selectedMonth}-${state.reportScope}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+async function loadArchiveTransactions(){
+  if(!currentUser)return;
+  const current=new Date(); const start=new Date(current.getFullYear(),current.getMonth()-11,1);
+  const {data,error}=await sb.from('expenses').select('*').gte('spent_at',isoDate(start)).order('spent_at',{ascending:false});
+  if(error){console.warn('Archive unavailable',error.message);return;}
+  state.archiveTransactions=(data||[]).map(fromCloudRow);
+}
+async function selectMonth(key){
+  if(!key||key===state.selectedMonth)return;
+  state.selectedMonth=key; await loadTransactions();
+}
 function renderInsights(){
   const activeScope=state.scope;
   const scopedTransactions=state.transactions.filter(t=>t.scope===activeScope);
@@ -405,17 +496,27 @@ function renderInsights(){
 function renderHistory(){
   const filter=state.historyScope;
   const q=state.historySearch.trim().toLowerCase();
-  const txs=state.transactions.filter(t=>(filter==='all'||t.scope===filter) && (!q || t.description.toLowerCase().includes(q) || (getCategory(t.categoryId)?.name||'').toLowerCase().includes(q)));
+  let txs=state.transactions.filter(t=>(filter==='all'||t.scope===filter) && (!q || t.description.toLowerCase().includes(q) || (getCategory(t.categoryId)?.name||'').toLowerCase().includes(q)));
+  txs=txs.slice().sort((a,b)=>{
+    if(state.historySort==='date_asc') return String(a.spentAt).localeCompare(String(b.spentAt));
+    if(state.historySort==='amount_desc') return b.amount-a.amount;
+    if(state.historySort==='amount_asc') return a.amount-b.amount;
+    if(state.historySort==='name_asc') return a.description.localeCompare(b.description);
+    return String(b.spentAt).localeCompare(String(a.spentAt)) || String(b.createdAt||'').localeCompare(String(a.createdAt||''));
+  });
   if(!txs.length){els.transactions.innerHTML=`<div class="empty"><div class="empty-icon">🧾</div><div class="empty-title">${q?'Ничего не найдено':'В этом месяце пока нет расходов'}</div><div>${q?'Попробуй другой запрос.':'Добавь первую трату выше — она появится здесь.'}</div></div>`;return;}
-  const groups=new Map();
-  for(const t of txs){const key=t.spentAt||String(t.createdAt).slice(0,10); if(!groups.has(key))groups.set(key,[]); groups.get(key).push(t);}
-  const html=[...groups.entries()].sort((a,b)=>b[0].localeCompare(a[0])).map(([date,items])=>{
-    const d=new Date(date+'T12:00:00'); const title=d.toLocaleDateString('ru-RU',{weekday:'long',month:'long',day:'numeric'}); const total=items.reduce((s,t)=>s+t.amount,0);
-    const rows=items.map(t=>{const c=getCategory(t.categoryId);return `<button class="transaction" data-id="${t.id}"><div><div class="transaction-title">${c?.icon||'•'} ${escapeHtml(t.description)}</div><div class="transaction-sub">${c?.name||'Other'} · ${t.scope==='business'?'Business':'Family'}</div></div><div class="transaction-right"><div class="transaction-amount">-${money2(t.amount)}</div><div class="edit-hint">Edit</div></div></button>`;}).join('');
-    return `<div class="history-day"><div class="history-day-head"><span>${escapeHtml(title)}</span><strong>${money2(total)}</strong></div>${rows}</div>`;
-  }).join('');
-  els.transactions.innerHTML=html;
-  els.transactions.querySelectorAll('.transaction').forEach(btn=>btn.addEventListener('click',()=>{const tx=state.transactions.find(t=>t.id===btn.dataset.id);if(!tx)return;editingId=tx.id;pendingExpenses=[];openEditDialog(tx,true);}));
+  if(state.historyView==='days'){
+    const groups=new Map();
+    for(const t of txs){const key=t.spentAt||String(t.createdAt).slice(0,10); if(!groups.has(key))groups.set(key,[]); groups.get(key).push(t);}
+    els.transactions.innerHTML=[...groups.entries()].sort((a,b)=>state.historySort==='date_asc'?a[0].localeCompare(b[0]):b[0].localeCompare(a[0])).map(([date,items])=>{
+      const d=new Date(date+'T12:00:00'); const title=d.toLocaleDateString('ru-RU',{weekday:'long',month:'long',day:'numeric'}); const total=items.reduce((s,t)=>s+t.amount,0);
+      const rows=items.map(t=>{const c=getCategory(t.categoryId);return `<button class="transaction" data-id="${t.id}"><div><div class="transaction-title">${c?.icon||'•'} ${escapeHtml(t.description)}</div><div class="transaction-sub">${c?.name||'Other'} · ${t.scope==='business'?'Business':'Family'}</div></div><div class="transaction-right"><div class="transaction-amount">-${money2(t.amount)}</div><div class="edit-hint">Edit</div></div></button>`;}).join('');
+      return `<div class="history-day"><div class="history-day-head"><span>${escapeHtml(title)}</span><strong>${money2(total)}</strong></div>${rows}</div>`;
+    }).join('');
+  }else{
+    els.transactions.innerHTML=`<div class="table-wrap history-table-wrap"><table class="history-table"><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Type</th><th class="amount-col">Amount</th></tr></thead><tbody>${txs.map(t=>{const c=getCategory(t.categoryId);const d=new Date((t.spentAt||'')+'T12:00:00');return `<tr class="history-row" data-id="${t.id}"><td>${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</td><td><strong>${escapeHtml(t.description)}</strong></td><td>${c?.icon||'•'} ${escapeHtml(c?.name||'Other')}</td><td><span class="type-pill ${t.scope}">${t.scope==='business'?'Business':'Family'}</span></td><td class="amount-col"><strong>-${money2(t.amount)}</strong></td></tr>`;}).join('')}</tbody></table></div>`;
+  }
+  els.transactions.querySelectorAll('[data-id]').forEach(row=>row.addEventListener('click',()=>{const tx=state.transactions.find(t=>t.id===row.dataset.id);if(!tx)return;editingId=tx.id;pendingExpenses=[];openEditDialog(tx,true);}));
 }
 
 function render(){
@@ -428,7 +529,7 @@ function render(){
   els.categoryList.innerHTML=visible.map(c=>{const limit=categoryLimit(c.id),spent=state.transactions.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0),remaining=limit>0?limit-spent:null,rawPct=limit>0?(spent/limit)*100:0,pct=Math.min(100,rawPct),cls=rawPct>=100?'danger':rawPct>=80?'warn':'',cardCls=rawPct>=100?'over-budget':rawPct>=80?'near-limit':'',note=rawPct>=100?`<div class="limit-note danger">Превышение ${money2(spent-limit)}</div>`:rawPct>=80?`<div class="limit-note warn">Осталось ${money2(remaining)}</div>`:'';return `<article class="category-card ${cardCls}"><div class="category-head"><div><div class="category-name">${c.icon} ${c.name}</div><div class="category-meta">Потрачено ${money2(spent)}${limit>0?` из ${money2(limit)}`:''}</div>${note}</div><div class="category-actions"><div class="category-remaining">${limit>0?`${money2(remaining)} left`:money2(spent)}</div><button class="mini-btn edit-limit-btn" data-category="${c.id}">Лимит</button></div></div>${limit>0?`<div class="progress"><div class="${cls}" style="width:${pct}%"></div></div>`:''}</article>`;}).join('');
   els.categoryList.querySelectorAll('.edit-limit-btn').forEach(b=>b.addEventListener('click',()=>openLimitDialog(b.dataset.category)));
   const last=lastExpenseForScope(); els.repeatLastBtn.disabled=!last; els.lastExpenseHint.textContent=last?`${last.description} · ${money2(last.amount)}`:'Пока нечего повторять';
-  renderInsights(); renderHistory();
+  renderMonthlyExplorer(); renderInsights(); renderHistory();
 }
 
 function setSignedInView(isSignedIn){
@@ -463,6 +564,7 @@ async function showApp(session){
   await loadBankStatus();
   if(state.bankConnected) await syncBank({silent:true});
   else await loadReviewTransactions();
+  await loadArchiveTransactions();
   await loadTransactions();
 }
 function containsCyrillic(value){return /[\u0400-\u04FF\u0500-\u052F]/.test(value);}
@@ -478,6 +580,13 @@ els.addBtn.addEventListener('click',addExpenseFromInput); els.expenseInput.addEv
 els.saveExpenseBtn.addEventListener('click',saveDialogExpense); els.deleteExpenseBtn.addEventListener('click',deleteExpense); els.refreshBtn.addEventListener('click',async()=>{await loadLimits();await loadTransactions();});
 document.querySelectorAll('.scope-btn').forEach(btn=>btn.addEventListener('click',()=>{state.scope=btn.dataset.scope;localStorage.setItem('budgetFlowScope',state.scope);render();}));
 document.querySelectorAll('.history-filter-btn').forEach(btn=>btn.addEventListener('click',()=>{state.historyScope=btn.dataset.historyScope;render();})); els.historySearch.addEventListener('input',()=>{state.historySearch=els.historySearch.value;renderHistory();});
+
+document.querySelectorAll('.report-scope-btn').forEach(btn=>btn.addEventListener('click',()=>{state.reportScope=btn.dataset.reportScope;renderMonthlyExplorer();}));
+els.monthSelect?.addEventListener('change',()=>selectMonth(els.monthSelect.value));
+els.exportMonthBtn?.addEventListener('click',exportCurrentMonthCsv);
+els.historySort?.addEventListener('change',()=>{state.historySort=els.historySort.value;renderHistory();});
+document.querySelectorAll('.view-btn').forEach(btn=>btn.addEventListener('click',()=>{state.historyView=btn.dataset.historyView;document.querySelectorAll('.view-btn').forEach(b=>b.classList.toggle('active',b===btn));renderHistory();}));
+
 els.prevMonthBtn.addEventListener('click',()=>shiftMonth(-1)); els.nextMonthBtn.addEventListener('click',()=>shiftMonth(1)); els.todayMonthBtn.addEventListener('click',setThisMonth);
 els.saveLimitBtn.addEventListener('click',saveLimit); els.resetLimitBtn.addEventListener('click',resetLimit);
 els.connectBankBtn.addEventListener('click',connectBank);

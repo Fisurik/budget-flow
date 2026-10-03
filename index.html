@@ -53,13 +53,24 @@
       <article class="stat-card"><span class="stat-label">Left</span><strong id="statLeft">$0</strong></article>
     </section>
 
+    <section class="monthly-explorer">
+      <div class="section-title-row monthly-heading"><div><h2>Monthly Explorer</h2><span class="muted">история, таблицы и тренды по месяцам</span></div><div class="monthly-actions"><select id="monthSelect" class="compact-select" aria-label="Выбрать месяц"></select><button id="exportMonthBtn" class="ghost-btn" type="button">Export CSV</button></div></div>
+      <div class="report-scope-toggle"><button class="report-scope-btn active" data-report-scope="all">All</button><button class="report-scope-btn" data-report-scope="personal">Family</button><button class="report-scope-btn" data-report-scope="business">Business</button></div>
+      <div id="monthKpis" class="month-kpis"></div>
+      <div class="report-grid">
+        <article class="report-card"><div class="report-card-head"><div><div class="report-title">Расходы по дням</div><div class="report-sub">каждый столбик — один день месяца</div></div></div><div id="dailySpendChart" class="daily-chart"></div></article>
+        <article class="report-card"><div class="report-card-head"><div><div class="report-title">Категории</div><div class="report-sub">budget vs spent</div></div></div><div class="table-wrap"><table class="budget-table"><thead><tr><th>Категория</th><th>Budget</th><th>Spent</th><th>Left</th><th>Usage</th></tr></thead><tbody id="categoryReportBody"></tbody></table></div></article>
+      </div>
+      <article class="report-card archive-card"><div class="report-card-head"><div><div class="report-title">Архив месяцев</div><div class="report-sub">нажми на месяц, чтобы открыть его</div></div></div><div id="monthArchive" class="month-archive"></div></article>
+    </section>
+
     <section class="entry-card"><label for="expenseInput">Что ты потратил?</label><div class="input-row"><input id="expenseInput" autocomplete="off" placeholder="Publix 54 продукты" /><button id="addBtn" class="primary-btn">Добавить</button></div><div class="quick-row"><button id="repeatLastBtn" class="quick-btn" type="button" disabled>↻ Повторить последнюю</button><span id="lastExpenseHint" class="muted">Пока нечего повторять</span></div><p class="hint">Можно несколько: “Publix 80, BP 35, Chick-fil-A 22”.</p><p id="parsedPreview" class="success-note" hidden></p><div class="scope-toggle"><button class="scope-btn active" data-scope="personal">Family</button><button class="scope-btn" data-scope="business">Business</button></div></section>
 
     <section><div class="section-title-row"><h2>Категории</h2><span class="muted">нажми «Лимит», чтобы изменить</span></div><div id="categoryList" class="category-list"></div></section>
 
     <section><div class="section-title-row"><h2>Аналитика</h2><span class="muted">за выбранный месяц</span></div><div id="insights" class="insights-grid"></div></section>
 
-    <section><div class="section-title-row history-title"><h2>История</h2><button id="refreshBtn" class="link-btn">Обновить</button></div><div class="history-toolbar"><div class="history-filters"><button class="history-filter-btn active" data-history-scope="all">All</button><button class="history-filter-btn" data-history-scope="personal">Family</button><button class="history-filter-btn" data-history-scope="business">Business</button></div><input id="historySearch" class="history-search" type="search" placeholder="Поиск по истории" autocomplete="off" /></div><div id="transactions" class="transactions"></div></section>
+    <section><div class="section-title-row history-title"><div><h2>История</h2><span class="muted">операции выбранного месяца</span></div><button id="refreshBtn" class="link-btn">Обновить</button></div><div class="history-toolbar"><div class="history-filters"><button class="history-filter-btn active" data-history-scope="all">All</button><button class="history-filter-btn" data-history-scope="personal">Family</button><button class="history-filter-btn" data-history-scope="business">Business</button></div><div class="history-controls"><input id="historySearch" class="history-search" type="search" placeholder="Поиск по истории" autocomplete="off" /><select id="historySort" class="history-sort"><option value="date_desc">Новые сначала</option><option value="date_asc">Старые сначала</option><option value="amount_desc">Сначала большие</option><option value="amount_asc">Сначала маленькие</option><option value="name_asc">По названию</option></select><div class="view-toggle"><button class="view-btn active" data-history-view="table">Table</button><button class="view-btn" data-history-view="days">Days</button></div></div></div><div id="transactions" class="transactions"></div></section>
     </div>
   </main>
 
