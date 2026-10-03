@@ -20,9 +20,29 @@
   </section>
 
   <main id="appShell" class="app-shell is-hidden" hidden>
-    <header class="topbar"><div><p class="eyebrow" id="monthLabel">MONTH BUDGET</p><h1>Budget Flow</h1></div><div class="top-actions"><span id="syncBadge" class="sync-badge">Cloud</span><button id="logoutBtn" class="ghost-btn">Выйти</button></div></header>
+    <header class="topbar"><div><p class="eyebrow" id="monthLabel">MONTH BUDGET</p><h1>Budget Flow</h1></div><div class="top-actions"><button id="importCsvBtn" class="ghost-btn">Импорт CSV</button><span id="syncBadge" class="sync-badge">Cloud</span><button id="logoutBtn" class="ghost-btn">Выйти</button></div></header>
     <div class="account-row"><span id="userEmail" class="muted"></span><span id="syncStatus" class="muted">Синхронизировано</span></div>
 
+    <input id="bankCsvInput" type="file" accept=".csv,text/csv" hidden />
+
+    <section id="reviewSection" class="review-shell" hidden>
+      <div class="review-hero">
+        <div>
+          <p class="eyebrow">REVIEW TRANSACTIONS</p>
+          <h2><span id="reviewCount">0</span> операций ждут проверки</h2>
+          <p class="review-copy">Банк ничего не добавляет в бюджет автоматически. Проверь категорию и Family / Business, затем подтверди.</p>
+        </div>
+        <div class="review-hero-actions">
+          <button id="reviewImportBtn" class="ghost-btn" type="button">+ Импорт CSV</button>
+          <button id="approveAllBtn" class="primary-btn" type="button">Подтвердить все</button>
+        </div>
+      </div>
+      <div id="reviewNotice" class="review-notice" hidden></div>
+      <div id="reviewList" class="review-list"></div>
+      <button id="openDashboardBtn" class="link-card-btn" type="button">Перейти к бюджету, не разбирая сейчас →</button>
+    </section>
+
+    <div id="dashboardContent">
     <section class="month-nav"><button id="prevMonthBtn" class="nav-btn" aria-label="Предыдущий месяц">←</button><button id="todayMonthBtn" class="month-center">Текущий месяц</button><button id="nextMonthBtn" class="nav-btn" aria-label="Следующий месяц">→</button></section>
 
     <section class="hero-card"><p class="muted">Осталось в этом месяце</p><div id="remainingTotal" class="hero-amount">$0</div><div class="hero-row"><span id="spentTotal">Потрачено $0</span><span id="budgetTotal">Бюджет $0</span></div></section>
@@ -40,11 +60,12 @@
     <section><div class="section-title-row"><h2>Аналитика</h2><span class="muted">за выбранный месяц</span></div><div id="insights" class="insights-grid"></div></section>
 
     <section><div class="section-title-row history-title"><h2>История</h2><button id="refreshBtn" class="link-btn">Обновить</button></div><div class="history-toolbar"><div class="history-filters"><button class="history-filter-btn active" data-history-scope="all">All</button><button class="history-filter-btn" data-history-scope="personal">Family</button><button class="history-filter-btn" data-history-scope="business">Business</button></div><input id="historySearch" class="history-search" type="search" placeholder="Поиск по истории" autocomplete="off" /></div><div id="transactions" class="transactions"></div></section>
+    </div>
   </main>
 
   <dialog id="editDialog"><form method="dialog" class="dialog-card" id="editForm"><h3 id="dialogTitle">Проверить расход</h3><label>Сумма<input id="editAmount" type="number" step="0.01" min="0" required /></label><label>Категория<select id="editCategory"></select></label><label>Описание<input id="editDescription" /></label><div class="dialog-actions split-actions"><button id="deleteExpenseBtn" class="danger-btn" hidden>Удалить</button><span class="dialog-spacer"></span><button value="cancel" class="ghost-btn">Отмена</button><button id="saveExpenseBtn" value="default" class="primary-btn">Сохранить</button></div></form></dialog>
 
   <dialog id="editLimitDialog"><form method="dialog" class="dialog-card"><h3 id="limitCategoryName">Лимит</h3><label>Месячный лимит<input id="limitAmount" type="number" step="0.01" min="0" required /></label><p class="hint">0 = без лимита. Изменение применяется ко всем месяцам.</p><div class="dialog-actions split-actions"><button id="resetLimitBtn" class="ghost-btn">Сбросить</button><span class="dialog-spacer"></span><button value="cancel" class="ghost-btn">Отмена</button><button id="saveLimitBtn" value="default" class="primary-btn">Сохранить</button></div></form></dialog>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script><script src="app.js"></script>
 </body></html>

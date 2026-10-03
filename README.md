@@ -1,17 +1,22 @@
-# Budget Flow v5
+# Budget Flow v6
 
-Cloud-first personal/business budget tracker with Supabase.
+Cloud budget tracker with Supabase authentication, monthly budgets, Family/Business history, editable limits, and a bank CSV review queue.
 
-## v5 adds
-- Dashboard cards for Budget / Spent / Left
-- Monthly insights and top spending categories
-- Near-limit and over-budget warnings
-- Quick repeat of the latest expense in the active scope
-- Search inside monthly history
-- Improved empty states and mobile polish
+## New in v6
 
-Upload the files in this folder to the repository root. Vercel will redeploy automatically.
+- CSV bank transaction import.
+- Imported bank rows go to **Review transactions** first and never affect the budget automatically.
+- Suggested category and Family/Business based on merchant text.
+- Approve, Ignore, or Approve all.
+- Pending review opens before the normal dashboard after sign-in.
+- Duplicate CSV rows are ignored using a stable transaction key.
 
+## One-time Supabase setup
 
-## v5.1 auth visibility
-The login/registration screen is hidden after a valid session is detected and only returns after sign out. Both auth and app shells stay hidden until the initial Supabase session check completes, preventing auth-screen flashes.
+Before using CSV import, open **Supabase -> SQL Editor**, paste the contents of `bank_transactions.sql`, and run it once.
+
+`budget_limits.sql` is still required if it has not already been run for earlier versions.
+
+## CSV expectations
+
+The importer understands common columns such as Date / Posted Date, Description / Merchant / Name, Amount, or Debit/Credit. If an Amount export contains negative debits and positive credits, credits are skipped automatically. Every imported expense must still be reviewed before it reaches the budget.

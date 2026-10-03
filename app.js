@@ -24,12 +24,15 @@ let editingId = null;
 let pendingExpenses = [];
 let authMode = 'login';
 let limitsCloudAvailable = true;
+let bankQueueAvailable = true;
 const state = {
   transactions: [],
   scope: localStorage.getItem('budgetFlowScope') || 'personal',
   historyScope: 'all',
   historySearch: '',
   selectedMonth: monthKey(new Date()),
+  reviewTransactions: [],
+  reviewDismissed: false,
   limits: Object.fromEntries(CATEGORY_DEFS.map(c => [c.id, c.limit]))
 };
 
@@ -37,7 +40,7 @@ const els = Object.fromEntries([
   'authScreen','appShell','authForm','authEmail','authPassword','togglePasswordBtn','passwordHint','authSubmitBtn','authMessage','logoutBtn','userEmail','syncStatus','syncBadge','refreshBtn',
   'remainingTotal','spentTotal','budgetTotal','statBudget','statSpent','statLeft','expenseInput','addBtn','repeatLastBtn','lastExpenseHint','categoryList','insights','transactions','historySearch','editDialog','editAmount','editCategory','editDescription',
   'saveExpenseBtn','dialogTitle','deleteExpenseBtn','parsedPreview','monthLabel','prevMonthBtn','nextMonthBtn','todayMonthBtn','historyFilter','editLimitDialog',
-  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn'
+  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn'
 ].map(id => [id, document.querySelector('#'+id)]));
 
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
@@ -74,6 +77,126 @@ function parseSingleExpense(text, scope) {
 function parseExpenses(text){const rough=text.split(/[;\n]+|,(?=\s*[^,]*\d)/).map(s=>s.trim()).filter(Boolean); const parsed=rough.map(p=>parseSingleExpense(p,state.scope)).filter(Boolean); if(parsed.length)return parsed; const one=parseSingleExpense(text,state.scope); return one?[one]:[];}
 function fromCloudRow(row){return{id:row.id,amount:Number(row.amount),description:row.description||row.merchant||'Expense',categoryId:row.category,scope:row.budget_type==='business'?'business':'personal',createdAt:row.created_at,spentAt:row.spent_at};}
 function toCloudPayload(expense){return{amount:expense.amount,description:expense.description||'Expense',category:expense.categoryId,budget_type:expense.scope==='business'?'business':'family',spent_at:expense.spentAt||isoDate(new Date())};}
+
+
+function bankSuggestion(text) {
+  const t=String(text||'').toLowerCase();
+  let best=getCategory('other'), bestScore=0;
+  for(const c of CATEGORY_DEFS){
+    const score=c.keywords.reduce((a,k)=>a+(t.includes(k.toLowerCase())?Math.max(1,k.length):0),0);
+    if(score>bestScore){best=c;bestScore=score;}
+  }
+  return {categoryId:best.id, scope:best.scope==='business'?'business':'personal'};
+}
+function cleanHeader(value){return String(value||'').trim().toLowerCase().replace(/[._-]+/g,' ').replace(/\s+/g,' ');}
+function findColumn(headers, names){const norm=headers.map(h=>cleanHeader(h));for(const name of names){const n=cleanHeader(name);const i=norm.findIndex(h=>h===n||h.includes(n));if(i>=0)return headers[i];}return null;}
+function parseMoneyValue(value){
+  if(value===null||value===undefined||value==='')return NaN;
+  let s=String(value).trim(); const paren=/^\(.*\)$/.test(s); s=s.replace(/[$,\s]/g,'').replace(/[()]/g,'');
+  const n=Number(s); return Number.isFinite(n)?(paren?-Math.abs(n):n):NaN;
+}
+function parseBankDate(value){
+  const s=String(value||'').trim(); if(!s)return null;
+  let m=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/); if(m)return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+  m=s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/); if(m){let y=m[3];if(y.length===2)y=`20${y}`;return `${y}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;}
+  const d=new Date(s); return Number.isNaN(d.getTime())?null:isoDate(d);
+}
+function stableExternalId(parts){
+  const input=parts.join('|').toLowerCase(); let h=2166136261;
+  for(let i=0;i<input.length;i++){h^=input.charCodeAt(i);h=Math.imul(h,16777619);}
+  return `csv_${(h>>>0).toString(16)}_${input.length}`;
+}
+function normalizeCsvRows(rows, fields){
+  const headers=fields||Object.keys(rows[0]||{});
+  const dateCol=findColumn(headers,['date','posted date','transaction date','дата']);
+  const descCol=findColumn(headers,['description','merchant','name','payee','details','memo','описание','продавец']);
+  const idCol=findColumn(headers,['transaction id','transaction_id','id','reference','reference number']);
+  const debitCol=findColumn(headers,['debit','withdrawal','withdrawals','debits']);
+  const creditCol=findColumn(headers,['credit','deposit','credits']);
+  const amountCol=findColumn(headers,['amount','transaction amount','сумма']);
+  if(!dateCol||(!amountCol&&!debitCol)) throw new Error('Не нашёл колонки Date и Amount/Debit. Экспортируй CSV с датой, описанием и суммой.');
+  const amountValues=rows.map(r=>amountCol?parseMoneyValue(r[amountCol]):NaN).filter(Number.isFinite);
+  const hasNegative=amountValues.some(n=>n<0);
+  const output=[]; let skippedCredits=0, skippedInvalid=0;
+  for(const row of rows){
+    const date=parseBankDate(row[dateCol]); const description=String(row[descCol]||'Bank transaction').trim()||'Bank transaction';
+    let amount=NaN, isOutflow=true;
+    if(debitCol){ amount=Math.abs(parseMoneyValue(row[debitCol])); if(!Number.isFinite(amount)||amount<=0){ const credit=creditCol?parseMoneyValue(row[creditCol]):NaN; if(Number.isFinite(credit)&&credit!==0)skippedCredits++; else skippedInvalid++; continue; } }
+    else { const raw=parseMoneyValue(row[amountCol]); if(!Number.isFinite(raw)||raw===0){skippedInvalid++;continue;} if(hasNegative){isOutflow=raw<0;amount=Math.abs(raw);} else {amount=Math.abs(raw);} if(!isOutflow){skippedCredits++;continue;} }
+    if(!date||!Number.isFinite(amount)||amount<=0){skippedInvalid++;continue;}
+    const suggestion=bankSuggestion(description); const sourceId=String(row[idCol]||'').trim();
+    output.push({external_id:sourceId||stableExternalId([date,description,amount.toFixed(2)]),merchant:description,description,amount:Number(amount.toFixed(2)),transaction_date:date,suggested_category:suggestion.categoryId,suggested_budget_type:suggestion.scope==='business'?'business':'family',status:'pending',raw_data:row});
+  }
+  return {rows:output,skippedCredits,skippedInvalid};
+}
+function showReviewNotice(message,kind='ok'){
+  els.reviewNotice.hidden=false; els.reviewNotice.textContent=message; els.reviewNotice.classList.toggle('error',kind==='error'); els.reviewNotice.classList.toggle('success',kind==='ok');
+}
+function updatePrimaryView(forceReview=false){
+  const hasPending=state.reviewTransactions.length>0;
+  const showReview=bankQueueAvailable&&hasPending&&(forceReview||!state.reviewDismissed);
+  els.reviewSection.hidden=!showReview; els.dashboardContent.hidden=showReview;
+  if(showReview) window.scrollTo({top:0,behavior:'smooth'});
+}
+async function loadReviewTransactions({forceReview=false}={}){
+  if(!currentUser)return;
+  const {data,error}=await sb.from('bank_transactions').select('*').eq('status','pending').order('transaction_date',{ascending:false}).order('created_at',{ascending:false});
+  if(error){bankQueueAvailable=false;state.reviewTransactions=[];console.warn('bank_transactions unavailable',error.message);els.importCsvBtn.disabled=true;els.importCsvBtn.title='Сначала запусти bank_transactions.sql в Supabase';updatePrimaryView();return;}
+  bankQueueAvailable=true; els.importCsvBtn.disabled=false; state.reviewTransactions=(data||[]).map(r=>({...r,amount:Number(r.amount)})); renderReview(); updatePrimaryView(forceReview);
+}
+function reviewCategoryOptions(selected){return CATEGORY_DEFS.map(c=>`<option value="${c.id}" ${c.id===selected?'selected':''}>${c.icon} ${c.name}</option>`).join('');}
+function renderReview(){
+  const rows=state.reviewTransactions; els.reviewCount.textContent=rows.length; els.approveAllBtn.disabled=!rows.length;
+  if(!rows.length){els.reviewList.innerHTML='<div class="empty"><div class="empty-icon">✅</div><div class="empty-title">Очередь разобрана</div><div>Новых банковских операций нет.</div></div>';return;}
+  els.reviewList.innerHTML=rows.map(r=>{const cat=r.suggested_category||'other';const scope=r.suggested_budget_type==='business'?'business':'family';return `<article class="review-card" data-review-id="${r.id}"><div class="review-card-head"><div><div class="review-merchant">${escapeHtml(r.description||r.merchant||'Bank transaction')}</div><div class="review-date">${escapeHtml(r.transaction_date)}</div></div><strong class="review-amount">-${money2(r.amount)}</strong></div><div class="review-fields"><label>Категория<select class="review-category">${reviewCategoryOptions(cat)}</select></label><label>Тип<select class="review-scope"><option value="family" ${scope==='family'?'selected':''}>Family</option><option value="business" ${scope==='business'?'selected':''}>Business</option></select></label></div><label class="review-description-label">Описание<input class="review-description" value="${escapeHtml(r.description||r.merchant||'')}" /></label><div class="review-card-actions"><button class="ghost-btn ignore-review-btn" type="button">Ignore</button><button class="primary-btn approve-review-btn" type="button">Approve</button></div></article>`;}).join('');
+  els.reviewList.querySelectorAll('.review-card').forEach(card=>{
+    const id=card.dataset.reviewId; const row=state.reviewTransactions.find(x=>x.id===id); if(!row)return;
+    const category=card.querySelector('.review-category'),scope=card.querySelector('.review-scope'),description=card.querySelector('.review-description');
+    category.addEventListener('change',async()=>{row.suggested_category=category.value;const c=getCategory(category.value);if(c){row.suggested_budget_type=c.scope==='business'?'business':'family';scope.value=row.suggested_budget_type;}await saveReviewSuggestion(row);});
+    scope.addEventListener('change',async()=>{row.suggested_budget_type=scope.value;await saveReviewSuggestion(row);});
+    description.addEventListener('change',async()=>{row.description=description.value.trim()||row.merchant||'Bank transaction';await saveReviewSuggestion(row);});
+    card.querySelector('.approve-review-btn').addEventListener('click',()=>approveReviewTransaction(id));
+    card.querySelector('.ignore-review-btn').addEventListener('click',()=>ignoreReviewTransaction(id));
+  });
+}
+async function saveReviewSuggestion(row){
+  const {error}=await sb.from('bank_transactions').update({description:row.description,suggested_category:row.suggested_category,suggested_budget_type:row.suggested_budget_type}).eq('id',row.id);
+  if(error)showReviewNotice('Не удалось сохранить выбор: '+error.message,'error');
+}
+async function approveReviewTransaction(id){
+  const row=state.reviewTransactions.find(x=>x.id===id);if(!row)return;
+  const payload={...toCloudPayload({amount:row.amount,description:row.description||row.merchant,categoryId:row.suggested_category||'other',scope:row.suggested_budget_type==='business'?'business':'personal',spentAt:row.transaction_date}),source_bank_transaction_id:row.id};
+  setSyncStatus('Подтверждаю…','syncing');
+  const {error}=await sb.from('expenses').upsert(payload,{onConflict:'source_bank_transaction_id'});if(error){setSyncStatus('Ошибка','error');showReviewNotice(error.message,'error');return;}
+  const done=await sb.from('bank_transactions').update({status:'approved',reviewed_at:new Date().toISOString()}).eq('id',id);if(done.error){setSyncStatus('Ошибка','error');showReviewNotice(done.error.message,'error');return;}
+  state.reviewTransactions=state.reviewTransactions.filter(x=>x.id!==id);renderReview();updatePrimaryView();setSyncStatus('Синхронизировано');await loadTransactions();
+}
+async function ignoreReviewTransaction(id){
+  const {error}=await sb.from('bank_transactions').update({status:'ignored',reviewed_at:new Date().toISOString()}).eq('id',id);if(error){showReviewNotice(error.message,'error');return;}
+  state.reviewTransactions=state.reviewTransactions.filter(x=>x.id!==id);renderReview();updatePrimaryView();
+}
+async function approveAllReview(){
+  if(!state.reviewTransactions.length)return;
+  const rows=state.reviewTransactions.map(r=>({...toCloudPayload({amount:r.amount,description:r.description||r.merchant,categoryId:r.suggested_category||'other',scope:r.suggested_budget_type==='business'?'business':'personal',spentAt:r.transaction_date}),source_bank_transaction_id:r.id}));
+  els.approveAllBtn.disabled=true;setSyncStatus('Подтверждаю все…','syncing');
+  const {error}=await sb.from('expenses').upsert(rows,{onConflict:'source_bank_transaction_id'});if(error){els.approveAllBtn.disabled=false;setSyncStatus('Ошибка','error');showReviewNotice(error.message,'error');return;}
+  const ids=state.reviewTransactions.map(r=>r.id);const done=await sb.from('bank_transactions').update({status:'approved',reviewed_at:new Date().toISOString()}).in('id',ids);if(done.error){els.approveAllBtn.disabled=false;showReviewNotice(done.error.message,'error');return;}
+  const count=ids.length;state.reviewTransactions=[];renderReview();state.reviewDismissed=false;updatePrimaryView();setSyncStatus('Синхронизировано');showParsedMessage(`Подтверждено банковских операций: ${count}`);await loadTransactions();
+}
+async function importBankCsv(file){
+  if(!file||!currentUser)return;
+  if(!window.Papa){alert('CSV parser не загрузился. Обнови страницу и попробуй снова.');return;}
+  setSyncStatus('Читаю CSV…','syncing');
+  window.Papa.parse(file,{header:true,skipEmptyLines:true,complete:async(result)=>{
+    try{
+      const parsed=normalizeCsvRows(result.data||[],result.meta?.fields||[]);if(!parsed.rows.length)throw new Error('Не нашёл расходных операций в CSV.');
+      const rows=parsed.rows.map(r=>({...r,user_id:currentUser.id}));
+      const {error}=await sb.from('bank_transactions').upsert(rows,{onConflict:'user_id,external_id',ignoreDuplicates:true});if(error)throw error;
+      state.reviewDismissed=false;await loadReviewTransactions({forceReview:true});setSyncStatus('Синхронизировано');showReviewNotice(`Импортировано на рассмотрение: ${parsed.rows.length}. Пропущено зачислений: ${parsed.skippedCredits}${parsed.skippedInvalid?`. Не распознано строк: ${parsed.skippedInvalid}`:''}.`,'ok');
+    }catch(err){console.error(err);setSyncStatus('Ошибка импорта','error');showReviewNotice(err.message||String(err),'error');}
+    finally{els.bankCsvInput.value='';}
+  },error:(err)=>{setSyncStatus('Ошибка импорта','error');showReviewNotice(err.message||'Не удалось прочитать CSV','error');els.bankCsvInput.value='';}});
+}
 
 async function loadLimits(){
   state.limits = Object.fromEntries(CATEGORY_DEFS.map(c => [c.id,c.limit]));
@@ -216,6 +339,8 @@ async function showApp(session){
   currentUser=session?.user||null;
   if(!currentUser){
     state.transactions=[];
+    state.reviewTransactions=[];
+    state.reviewDismissed=false;
     setSignedInView(false);
     setAuthMode('login');
     els.authPassword.value='';
@@ -229,8 +354,10 @@ async function showApp(session){
   els.authMessage.hidden=true;
   els.authPassword.value='';
   els.userEmail.textContent=currentUser.email||'';
+  state.reviewDismissed=false;
   await migrateLocalExpensesOnce();
   await loadLimits();
+  await loadReviewTransactions();
   await loadTransactions();
 }
 function containsCyrillic(value){return /[\u0400-\u04FF\u0500-\u052F]/.test(value);}
@@ -248,6 +375,11 @@ document.querySelectorAll('.scope-btn').forEach(btn=>btn.addEventListener('click
 document.querySelectorAll('.history-filter-btn').forEach(btn=>btn.addEventListener('click',()=>{state.historyScope=btn.dataset.historyScope;render();})); els.historySearch.addEventListener('input',()=>{state.historySearch=els.historySearch.value;renderHistory();});
 els.prevMonthBtn.addEventListener('click',()=>shiftMonth(-1)); els.nextMonthBtn.addEventListener('click',()=>shiftMonth(1)); els.todayMonthBtn.addEventListener('click',setThisMonth);
 els.saveLimitBtn.addEventListener('click',saveLimit); els.resetLimitBtn.addEventListener('click',resetLimit);
+els.importCsvBtn.addEventListener('click',()=>els.bankCsvInput.click());
+els.reviewImportBtn.addEventListener('click',()=>els.bankCsvInput.click());
+els.bankCsvInput.addEventListener('change',()=>importBankCsv(els.bankCsvInput.files?.[0]));
+els.approveAllBtn.addEventListener('click',approveAllReview);
+els.openDashboardBtn.addEventListener('click',()=>{state.reviewDismissed=true;updatePrimaryView();});
 
 sb.auth.onAuthStateChange((_event,session)=>showApp(session));
 (async()=>{const {data}=await sb.auth.getSession();await showApp(data.session);})();
