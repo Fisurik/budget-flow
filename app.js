@@ -39,6 +39,8 @@ const state = {
   selectedMonth: monthKey(new Date()),
   reviewTransactions: [],
   reviewDismissed: false,
+  bankConnected: false,
+  bankInstitutions: [],
   limits: Object.fromEntries(CATEGORY_DEFS.map(c => [c.id, c.limit]))
 };
 
@@ -46,7 +48,7 @@ const els = Object.fromEntries([
   'authScreen','appShell','authForm','authEmail','authPassword','togglePasswordBtn','passwordHint','authSubmitBtn','authMessage','logoutBtn','userEmail','syncStatus','syncBadge','refreshBtn',
   'remainingTotal','spentTotal','budgetTotal','statBudget','statSpent','statLeft','expenseInput','addBtn','repeatLastBtn','lastExpenseHint','categoryList','insights','transactions','historySearch','editDialog','editAmount','editCategory','editDescription',
   'saveExpenseBtn','dialogTitle','deleteExpenseBtn','parsedPreview','monthLabel','prevMonthBtn','nextMonthBtn','todayMonthBtn','historyFilter','editLimitDialog',
-  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn'
+  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn'
 ].map(id => [id, document.querySelector('#'+id)]));
 
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
@@ -229,6 +231,75 @@ async function importBankCsv(file){
   },error:(err)=>{setSyncStatus('Ошибка импорта','error');showReviewNotice(err.message||'Не удалось прочитать CSV','error');els.bankCsvInput.value='';}});
 }
 
+
+async function apiFetch(path, options={}){
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session?.access_token) throw new Error('Сессия истекла. Войди снова.');
+  const headers={'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`,...(options.headers||{})};
+  const res=await fetch(path,{...options,headers,cache:'no-store'});
+  let body={};
+  try{body=await res.json();}catch{}
+  if(!res.ok) throw new Error(body.error||`Server error ${res.status}`);
+  return body;
+}
+function renderBankStatus(){
+  if(!els.connectBankBtn||!els.syncBankBtn)return;
+  els.connectBankBtn.textContent=state.bankConnected?'Add Bank':'Connect Bank';
+  els.syncBankBtn.disabled=!state.bankConnected;
+  const names=state.bankInstitutions.map(x=>x.institution_name).filter(Boolean);
+  els.syncBankBtn.title=names.length?`Connected: ${names.join(', ')}`:(state.bankConnected?'Bank connected':'Connect a bank first');
+}
+async function loadBankStatus(){
+  if(!currentUser)return;
+  try{
+    const data=await apiFetch('/api/plaid-status',{method:'GET'});
+    state.bankConnected=Boolean(data.connected);
+    state.bankInstitutions=data.items||[];
+  }catch(err){
+    console.warn('Plaid status unavailable',err.message);
+    state.bankConnected=false;state.bankInstitutions=[];
+  }
+  renderBankStatus();
+}
+async function connectBank(){
+  if(!currentUser)return;
+  if(!window.Plaid){showReviewNotice('Plaid Link не загрузился. Обнови страницу.','error');return;}
+  els.connectBankBtn.disabled=true;setSyncStatus('Открываю банк…','syncing');
+  try{
+    const {link_token}=await apiFetch('/api/plaid-link-token',{method:'POST',body:'{}'});
+    const handler=window.Plaid.create({
+      token:link_token,
+      onSuccess:async(public_token,metadata)=>{
+        try{
+          setSyncStatus('Подключаю банк…','syncing');
+          const result=await apiFetch('/api/plaid-exchange',{method:'POST',body:JSON.stringify({public_token,institution_id:metadata?.institution?.institution_id||null,institution_name:metadata?.institution?.name||null})});
+          await loadBankStatus();
+          state.reviewDismissed=false;
+          await loadReviewTransactions({forceReview:true});
+          setSyncStatus('Синхронизировано');
+          const n=result?.sync?.added||0;
+          showReviewNotice(n?`Банк подключён. Новых операций на проверку: ${n}.`:'Банк подключён. Если операции ещё не появились, нажми Sync Bank через несколько секунд.','ok');
+        }catch(err){setSyncStatus('Ошибка банка','error');showReviewNotice(err.message,'error');}
+        finally{els.connectBankBtn.disabled=false;}
+      },
+      onExit:(err)=>{els.connectBankBtn.disabled=false;setSyncStatus('Синхронизировано');if(err)showReviewNotice(err.display_message||err.error_message||'Plaid Link закрыт с ошибкой','error');},
+    });
+    handler.open();
+  }catch(err){els.connectBankBtn.disabled=false;setSyncStatus('Ошибка банка','error');showReviewNotice(err.message,'error');}
+}
+async function syncBank({silent=false}={}){
+  if(!currentUser||!state.bankConnected)return;
+  els.syncBankBtn.disabled=true;if(!silent)setSyncStatus('Синхронизирую банк…','syncing');
+  try{
+    const result=await apiFetch('/api/plaid-sync',{method:'POST',body:'{}'});
+    state.reviewDismissed=false;
+    await loadReviewTransactions({forceReview:(result.added||0)>0});
+    if(!silent)showReviewNotice(`Sync готов: новых ${result.added||0}, обновлено ${result.modified||0}, удалено ${result.removed||0}.`,'ok');
+    setSyncStatus('Синхронизировано');
+  }catch(err){console.error(err);if(!silent){setSyncStatus('Ошибка банка','error');showReviewNotice(err.message,'error');}}
+  finally{els.syncBankBtn.disabled=!state.bankConnected;}
+}
+
 async function loadLimits(){
   state.limits = Object.fromEntries(CATEGORY_DEFS.map(c => [c.id,c.limit]));
   const local=JSON.parse(localStorage.getItem('budgetFlowLimits')||'{}'); Object.assign(state.limits,local);
@@ -389,7 +460,9 @@ async function showApp(session){
   state.reviewDismissed=false;
   await migrateLocalExpensesOnce();
   await loadLimits();
-  await loadReviewTransactions();
+  await loadBankStatus();
+  if(state.bankConnected) await syncBank({silent:true});
+  else await loadReviewTransactions();
   await loadTransactions();
 }
 function containsCyrillic(value){return /[\u0400-\u04FF\u0500-\u052F]/.test(value);}
@@ -407,6 +480,8 @@ document.querySelectorAll('.scope-btn').forEach(btn=>btn.addEventListener('click
 document.querySelectorAll('.history-filter-btn').forEach(btn=>btn.addEventListener('click',()=>{state.historyScope=btn.dataset.historyScope;render();})); els.historySearch.addEventListener('input',()=>{state.historySearch=els.historySearch.value;renderHistory();});
 els.prevMonthBtn.addEventListener('click',()=>shiftMonth(-1)); els.nextMonthBtn.addEventListener('click',()=>shiftMonth(1)); els.todayMonthBtn.addEventListener('click',setThisMonth);
 els.saveLimitBtn.addEventListener('click',saveLimit); els.resetLimitBtn.addEventListener('click',resetLimit);
+els.connectBankBtn.addEventListener('click',connectBank);
+els.syncBankBtn.addEventListener('click',()=>syncBank());
 els.importCsvBtn.addEventListener('click',()=>els.bankCsvInput.click());
 els.reviewImportBtn.addEventListener('click',()=>els.bankCsvInput.click());
 els.bankCsvInput.addEventListener('change',()=>importBankCsv(els.bankCsvInput.files?.[0]));
