@@ -132,62 +132,124 @@ async function patchPlaidItem(id, patch) {
   });
 }
 
-async function insertAddedTransactions(userId, txs, { initial = false } = {}) {
-  const monthStart = new Date();
-  monthStart.setUTCDate(1); monthStart.setUTCHours(0,0,0,0);
-  const monthStartIso = monthStart.toISOString().slice(0,10);
-  const rows = txs
-    .filter(tx => !tx.pending && Number(tx.amount) > 0)
-    .filter(tx => !initial || String(tx.authorized_date || tx.date || '') >= monthStartIso)
-    .map(tx => {
-      const [category, budgetType] = suggestionForTransaction(tx);
-      return {
-        user_id: userId,
-        external_id: `plaid:${tx.transaction_id}`,
-        merchant: tx.merchant_name || tx.name || 'Bank transaction',
-        description: tx.merchant_name || tx.name || 'Bank transaction',
-        amount: Number(tx.amount),
-        transaction_date: tx.authorized_date || tx.date,
-        suggested_category: category,
-        suggested_budget_type: budgetType,
-        status: 'pending',
-        raw_data: tx,
-      };
-    });
-  if (!rows.length) return 0;
+async function getBankTransactionByExternal(userId, externalId) {
+  const qs = new URLSearchParams({
+    user_id: `eq.${userId}`,
+    external_id: `eq.${externalId}`,
+    select: 'id,user_id,external_id,status,raw_data',
+    limit: '1',
+  });
+  const rows = await adminFetch(`bank_transactions?${qs.toString()}`, { method: 'GET' });
+  return rows?.[0] || null;
+}
+
+async function patchBankTransaction(id, patch) {
+  const qs = new URLSearchParams({ id: `eq.${id}` });
+  await adminFetch(`bank_transactions?${qs.toString()}`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify(patch),
+  });
+}
+
+async function reconcileApprovedExpense(bankRow, tx) {
+  if (!bankRow || bankRow.status !== 'approved') return;
+  const amount = Number(tx.amount);
+  if (!(amount > 0)) return;
+  const spentAt = tx.authorized_date || tx.date;
+  const qs = new URLSearchParams({ source_bank_transaction_id: `eq.${bankRow.id}` });
+  await adminFetch(`expenses?${qs.toString()}`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({ amount, spent_at: spentAt }),
+  });
+}
+
+function bankPatchFromPlaid(tx) {
+  return {
+    merchant: tx.merchant_name || tx.name || 'Bank transaction',
+    description: tx.merchant_name || tx.name || 'Bank transaction',
+    amount: Number(tx.amount),
+    transaction_date: tx.authorized_date || tx.date,
+    raw_data: tx,
+  };
+}
+
+async function ingestPlaidTransaction(userId, tx, { initial = false, monthStartIso = null } = {}) {
+  if (!(Number(tx.amount) > 0)) return 0;
+  const txDate = String(tx.authorized_date || tx.date || '');
+  if (initial && monthStartIso && txDate < monthStartIso) return 0;
+
+  const externalId = `plaid:${tx.transaction_id}`;
+  let row = await getBankTransactionByExternal(userId, externalId);
+
+  // Plaid commonly replaces a pending transaction with a new posted transaction ID.
+  // pending_transaction_id lets us keep the same review/expense row instead of creating a duplicate.
+  if (!row && tx.pending_transaction_id) {
+    const pendingExternalId = `plaid:${tx.pending_transaction_id}`;
+    const prior = await getBankTransactionByExternal(userId, pendingExternalId);
+    if (prior) {
+      await patchBankTransaction(prior.id, { external_id: externalId, ...bankPatchFromPlaid(tx) });
+      await reconcileApprovedExpense(prior, tx);
+      return 0;
+    }
+  }
+
+  if (row) {
+    await patchBankTransaction(row.id, bankPatchFromPlaid(tx));
+    await reconcileApprovedExpense(row, tx);
+    return 0;
+  }
+
+  const [category, budgetType] = suggestionForTransaction(tx);
+  const newRow = {
+    user_id: userId,
+    external_id: externalId,
+    merchant: tx.merchant_name || tx.name || 'Bank transaction',
+    description: tx.merchant_name || tx.name || 'Bank transaction',
+    amount: Number(tx.amount),
+    transaction_date: tx.authorized_date || tx.date,
+    suggested_category: category,
+    suggested_budget_type: budgetType,
+    status: 'pending',
+    raw_data: tx,
+  };
   const qs = new URLSearchParams({ on_conflict: 'user_id,external_id' });
   await adminFetch(`bank_transactions?${qs.toString()}`, {
     method: 'POST',
     headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' },
-    body: JSON.stringify(rows),
+    body: JSON.stringify(newRow),
   });
-  return rows.length;
+  return 1;
+}
+
+async function insertAddedTransactions(userId, txs, { initial = false } = {}) {
+  const monthStart = new Date();
+  monthStart.setUTCDate(1); monthStart.setUTCHours(0,0,0,0);
+  const monthStartIso = monthStart.toISOString().slice(0,10);
+  let added = 0;
+  for (const tx of txs) {
+    added += await ingestPlaidTransaction(userId, tx, { initial, monthStartIso });
+  }
+  return added;
 }
 
 async function applyModifiedTransactions(userId, txs) {
   let changed = 0;
   for (const tx of txs) {
-    if (tx.pending || Number(tx.amount) <= 0) continue;
-    const [category, budgetType] = suggestionForTransaction(tx);
-    const qs = new URLSearchParams({
-      user_id: `eq.${userId}`,
-      external_id: `eq.plaid:${tx.transaction_id}`,
-      status: 'eq.pending',
-    });
-    await adminFetch(`bank_transactions?${qs.toString()}`, {
-      method: 'PATCH',
-      headers: { Prefer: 'return=minimal' },
-      body: JSON.stringify({
-        merchant: tx.merchant_name || tx.name || 'Bank transaction',
-        description: tx.merchant_name || tx.name || 'Bank transaction',
-        amount: Number(tx.amount),
-        transaction_date: tx.authorized_date || tx.date,
-        suggested_category: category,
-        suggested_budget_type: budgetType,
-        raw_data: tx,
-      }),
-    });
-    changed += 1;
+    if (!(Number(tx.amount) > 0)) continue;
+    const externalId = `plaid:${tx.transaction_id}`;
+    let row = await getBankTransactionByExternal(userId, externalId);
+    if (!row && tx.pending_transaction_id) {
+      row = await getBankTransactionByExternal(userId, `plaid:${tx.pending_transaction_id}`);
+      if (row) await patchBankTransaction(row.id, { external_id: externalId, ...bankPatchFromPlaid(tx) });
+    } else if (row) {
+      await patchBankTransaction(row.id, bankPatchFromPlaid(tx));
+    }
+    if (row) {
+      await reconcileApprovedExpense(row, tx);
+      changed += 1;
+    }
   }
   return changed;
 }
