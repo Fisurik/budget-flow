@@ -1,24 +1,13 @@
-# Budget Flow v3
+# Budget Flow v5
 
-Cloud-enabled PWA budget tracker using Supabase Auth + Postgres.
+Cloud-first personal/business budget tracker with Supabase.
 
-## Features
-- Email/password sign-up and login
-- Per-user RLS-backed cloud expenses
-- Sync across devices
-- One-time migration of old local expenses
-- Family / Business scopes
-- Multi-expense parsing
-- Edit/delete transactions
+## v5 adds
+- Dashboard cards for Budget / Spent / Left
+- Monthly insights and top spending categories
+- Near-limit and over-budget warnings
+- Quick repeat of the latest expense in the active scope
+- Search inside monthly history
+- Improved empty states and mobile polish
 
-## Deploy
-Upload the files in this folder to the root of the GitHub repository. Vercel will redeploy automatically.
-
-If an older PWA is cached, hard-refresh or remove/re-add the Home Screen app after deployment.
-
-
-## v3.1 auth fix
-- Magic-link login by email.
-- Password reset flow.
-- Password recovery dialog.
-- New service-worker cache version for mobile updates.
+Upload the files in this folder to the repository root. Vercel will redeploy automatically.

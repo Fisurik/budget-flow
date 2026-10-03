@@ -1,139 +1,50 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#0f172a" />
-  <title>Budget Flow</title>
   <link rel="manifest" href="manifest.json" />
-  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icon.svg" />
   <link rel="stylesheet" href="styles.css" />
+  <title>Budget Flow</title>
 </head>
 <body>
   <section id="authScreen" class="auth-shell">
     <div class="auth-card">
-      <p class="eyebrow">BUDGET FLOW CLOUD</p>
-      <h1>Твой бюджет в облаке</h1>
-      <p class="auth-copy">Войди, чтобы расходы синхронизировались между телефоном и компьютером.</p>
-
-      <div class="auth-tabs" role="tablist">
-        <button class="auth-tab active" data-auth-mode="login">Войти</button>
-        <button class="auth-tab" data-auth-mode="signup">Регистрация</button>
-      </div>
-
-      <form id="authForm" class="auth-form">
-        <label>Email
-          <input id="authEmail" type="email" autocomplete="email" required placeholder="you@example.com" />
-        </label>
-        <label>Пароль
-          <input id="authPassword" type="password" autocomplete="current-password" minlength="6" required placeholder="Минимум 6 символов" />
-        </label>
-        <button id="authSubmitBtn" class="primary-btn" type="submit">Войти</button>
-      </form>
-      <div class="auth-secondary-actions">
-        <button id="magicLinkBtn" class="link-btn auth-link-btn" type="button">Войти по ссылке на email</button>
-        <button id="forgotPasswordBtn" class="link-btn auth-link-btn" type="button">Забыли пароль?</button>
-      </div>
+      <p class="eyebrow">BUDGET FLOW CLOUD</p><h1>Твой бюджет в облаке</h1><p class="auth-copy">Войди, чтобы расходы синхронизировались между телефоном и компьютером.</p>
+      <div class="auth-tabs"><button class="auth-tab active" data-auth-mode="login">Войти</button><button class="auth-tab" data-auth-mode="signup">Регистрация</button></div>
+      <form id="authForm" class="auth-form"><label>Email<input id="authEmail" type="email" autocomplete="email" required /></label><label>Пароль<div class="password-field"><input id="authPassword" type="password" autocomplete="current-password" minlength="6" required /><button id="togglePasswordBtn" class="password-toggle" type="button" aria-label="Показать пароль" title="Показать пароль">👁</button></div><span id="passwordHint" class="password-hint">При регистрации используйте только латинские буквы, цифры и символы.</span></label><button id="authSubmitBtn" class="primary-btn" type="submit">Войти</button></form>
       <p id="authMessage" class="auth-message" hidden></p>
     </div>
   </section>
 
   <main id="appShell" class="app-shell" hidden>
-    <header class="topbar">
-      <div>
-        <p class="eyebrow" id="monthLabel">MONTH BUDGET</p>
-        <h1>Budget Flow</h1>
-      </div>
-      <div class="top-actions">
-        <span id="syncBadge" class="sync-badge">Cloud</span>
-        <button id="logoutBtn" class="ghost-btn">Выйти</button>
-      </div>
-    </header>
+    <header class="topbar"><div><p class="eyebrow" id="monthLabel">MONTH BUDGET</p><h1>Budget Flow</h1></div><div class="top-actions"><span id="syncBadge" class="sync-badge">Cloud</span><button id="logoutBtn" class="ghost-btn">Выйти</button></div></header>
+    <div class="account-row"><span id="userEmail" class="muted"></span><span id="syncStatus" class="muted">Синхронизировано</span></div>
 
-    <div class="account-row">
-      <span id="userEmail" class="muted"></span>
-      <span id="syncStatus" class="muted">Синхронизировано</span>
-    </div>
+    <section class="month-nav"><button id="prevMonthBtn" class="nav-btn" aria-label="Предыдущий месяц">←</button><button id="todayMonthBtn" class="month-center">Текущий месяц</button><button id="nextMonthBtn" class="nav-btn" aria-label="Следующий месяц">→</button></section>
 
-    <section class="hero-card">
-      <p class="muted">Осталось в этом месяце</p>
-      <div id="remainingTotal" class="hero-amount">$0</div>
-      <div class="hero-row">
-        <span id="spentTotal">Потрачено $0</span>
-        <span id="budgetTotal">Бюджет $0</span>
-      </div>
+    <section class="hero-card"><p class="muted">Осталось в этом месяце</p><div id="remainingTotal" class="hero-amount">$0</div><div class="hero-row"><span id="spentTotal">Потрачено $0</span><span id="budgetTotal">Бюджет $0</span></div></section>
+
+    <section class="stats-grid" aria-label="Сводка бюджета">
+      <article class="stat-card"><span class="stat-label">Budget</span><strong id="statBudget">$0</strong></article>
+      <article class="stat-card"><span class="stat-label">Spent</span><strong id="statSpent">$0</strong></article>
+      <article class="stat-card"><span class="stat-label">Left</span><strong id="statLeft">$0</strong></article>
     </section>
 
-    <section class="entry-card">
-      <label for="expenseInput">Что ты потратил?</label>
-      <div class="input-row">
-        <input id="expenseInput" autocomplete="off" placeholder="Publix 54 продукты" />
-        <button id="addBtn" class="primary-btn">Добавить</button>
-      </div>
-      <p class="hint">Можно сразу несколько: “Publix 80, BP 35, Chick-fil-A 22”.</p>
-      <p id="parsedPreview" class="success-note" hidden></p>
-      <div class="scope-toggle" role="group" aria-label="Тип расхода">
-        <button class="scope-btn active" data-scope="personal">Family</button>
-        <button class="scope-btn" data-scope="business">Business</button>
-      </div>
-    </section>
+    <section class="entry-card"><label for="expenseInput">Что ты потратил?</label><div class="input-row"><input id="expenseInput" autocomplete="off" placeholder="Publix 54 продукты" /><button id="addBtn" class="primary-btn">Добавить</button></div><div class="quick-row"><button id="repeatLastBtn" class="quick-btn" type="button" disabled>↻ Повторить последнюю</button><span id="lastExpenseHint" class="muted">Пока нечего повторять</span></div><p class="hint">Можно несколько: “Publix 80, BP 35, Chick-fil-A 22”.</p><p id="parsedPreview" class="success-note" hidden></p><div class="scope-toggle"><button class="scope-btn active" data-scope="personal">Family</button><button class="scope-btn" data-scope="business">Business</button></div></section>
 
-    <section>
-      <div class="section-title-row">
-        <h2>Категории</h2>
-        <span class="muted">+10% cushion</span>
-      </div>
-      <div id="categoryList" class="category-list"></div>
-    </section>
+    <section><div class="section-title-row"><h2>Категории</h2><span class="muted">нажми «Лимит», чтобы изменить</span></div><div id="categoryList" class="category-list"></div></section>
 
-    <section>
-      <div class="section-title-row">
-        <h2>Последние траты</h2>
-        <button id="refreshBtn" class="link-btn">Обновить</button>
-      </div>
-      <div id="transactions" class="transactions"></div>
-    </section>
+    <section><div class="section-title-row"><h2>Аналитика</h2><span class="muted">за выбранный месяц</span></div><div id="insights" class="insights-grid"></div></section>
+
+    <section><div class="section-title-row history-title"><h2>История</h2><button id="refreshBtn" class="link-btn">Обновить</button></div><div class="history-toolbar"><div class="history-filters"><button class="history-filter-btn active" data-history-scope="all">All</button><button class="history-filter-btn" data-history-scope="personal">Family</button><button class="history-filter-btn" data-history-scope="business">Business</button></div><input id="historySearch" class="history-search" type="search" placeholder="Поиск по истории" autocomplete="off" /></div><div id="transactions" class="transactions"></div></section>
   </main>
 
-  <dialog id="resetPasswordDialog">
-    <form method="dialog" class="dialog-card" id="resetPasswordForm">
-      <h3>Новый пароль</h3>
-      <p class="muted reset-copy">Введите новый пароль для Budget Flow.</p>
-      <label>Новый пароль
-        <input id="newPassword" type="password" autocomplete="new-password" minlength="6" required placeholder="Минимум 6 символов" />
-      </label>
-      <label>Повторите пароль
-        <input id="newPasswordConfirm" type="password" autocomplete="new-password" minlength="6" required placeholder="Повторите пароль" />
-      </label>
-      <p id="resetPasswordMessage" class="auth-message" hidden></p>
-      <div class="dialog-actions">
-        <button id="saveNewPasswordBtn" class="primary-btn" value="default">Сохранить пароль</button>
-      </div>
-    </form>
-  </dialog>
+  <dialog id="editDialog"><form method="dialog" class="dialog-card" id="editForm"><h3 id="dialogTitle">Проверить расход</h3><label>Сумма<input id="editAmount" type="number" step="0.01" min="0" required /></label><label>Категория<select id="editCategory"></select></label><label>Описание<input id="editDescription" /></label><div class="dialog-actions split-actions"><button id="deleteExpenseBtn" class="danger-btn" hidden>Удалить</button><span class="dialog-spacer"></span><button value="cancel" class="ghost-btn">Отмена</button><button id="saveExpenseBtn" value="default" class="primary-btn">Сохранить</button></div></form></dialog>
 
-  <dialog id="editDialog">
-    <form method="dialog" class="dialog-card" id="editForm">
-      <h3 id="dialogTitle">Проверить расход</h3>
-      <label>Сумма
-        <input id="editAmount" type="number" step="0.01" min="0" required />
-      </label>
-      <label>Категория
-        <select id="editCategory"></select>
-      </label>
-      <label>Описание
-        <input id="editDescription" />
-      </label>
-      <div class="dialog-actions split-actions">
-        <button id="deleteExpenseBtn" class="danger-btn" hidden>Удалить</button>
-        <span class="dialog-spacer"></span>
-        <button value="cancel" class="ghost-btn">Отмена</button>
-        <button id="saveExpenseBtn" value="default" class="primary-btn">Сохранить</button>
-      </div>
-    </form>
-  </dialog>
+  <dialog id="editLimitDialog"><form method="dialog" class="dialog-card"><h3 id="limitCategoryName">Лимит</h3><label>Месячный лимит<input id="limitAmount" type="number" step="0.01" min="0" required /></label><p class="hint">0 = без лимита. Изменение применяется ко всем месяцам.</p><div class="dialog-actions split-actions"><button id="resetLimitBtn" class="ghost-btn">Сбросить</button><span class="dialog-spacer"></span><button value="cancel" class="ghost-btn">Отмена</button><button id="saveLimitBtn" value="default" class="primary-btn">Сохранить</button></div></form></dialog>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js"></script>
-</body>
-</html>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="app.js"></script>
+</body></html>
