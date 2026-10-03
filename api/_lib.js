@@ -36,6 +36,7 @@ async function adminFetch(path, options = {}) {
   requireServerSecret();
   const headers = {
     apikey: SUPABASE_SECRET_KEY,
+    Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
     'Content-Type': 'application/json',
     ...(options.headers || {}),
   };
@@ -53,9 +54,10 @@ async function adminFetch(path, options = {}) {
 }
 
 function plaidBase() {
-  const env = (process.env.PLAID_ENV || 'sandbox').toLowerCase();
+  const env = (process.env.PLAID_ENV || 'production').toLowerCase();
   if (env === 'production') return 'https://production.plaid.com';
-  return 'https://sandbox.plaid.com';
+  if (env === 'sandbox') return 'https://sandbox.plaid.com';
+  throw Object.assign(new Error('PLAID_ENV must be production or sandbox'), { status: 500 });
 }
 
 async function plaid(path, body) {
