@@ -81,6 +81,26 @@ async function plaid(path, body) {
   return data;
 }
 
+
+function webhookUrlFromReq(req) {
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  if (!host) return null;
+  const proto = req.headers['x-forwarded-proto'] || 'https';
+  const secret = process.env.PLAID_WEBHOOK_SECRET || '';
+  const q = secret ? `?secret=${encodeURIComponent(secret)}` : '';
+  return `${proto}://${host}/api/plaid-webhook${q}`;
+}
+
+async function getPlaidItemByItemId(itemId) {
+  const qs = new URLSearchParams({
+    item_id: `eq.${itemId}`,
+    select: 'id,user_id,item_id,access_token,cursor,institution_id,institution_name,created_at,updated_at',
+    limit: '1',
+  });
+  const rows = await adminFetch(`plaid_items?${qs.toString()}`, { method: 'GET' });
+  return rows?.[0] || null;
+}
+
 function suggestionForTransaction(tx) {
   const merchant = String(tx.merchant_name || tx.name || '').toLowerCase();
   const primary = String(tx.personal_finance_category?.primary || '').toUpperCase();
@@ -305,6 +325,8 @@ module.exports = {
   adminFetch,
   plaid,
   getPlaidItems,
+  getPlaidItemByItemId,
   savePlaidItem,
   syncOneItem,
+  webhookUrlFromReq,
 };

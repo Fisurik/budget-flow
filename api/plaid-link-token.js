@@ -1,4 +1,4 @@
-const { json, requireUser, plaid } = require('./_lib');
+const { json, requireUser, plaid, webhookUrlFromReq } = require('./_lib');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
@@ -11,6 +11,7 @@ module.exports = async function handler(req, res) {
       country_codes: ['US'],
       language: 'en',
       transactions: { days_requested: 30 },
+      ...(webhookUrlFromReq(req) ? { webhook: webhookUrlFromReq(req) } : {}),
     });
     return json(res, 200, { link_token: data.link_token, expiration: data.expiration });
   } catch (err) {
