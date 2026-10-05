@@ -46,6 +46,8 @@ const state = {
   activeTab: localStorage.getItem('budgetFlowActiveTab') || 'budget',
   bankConnected: false,
   bankInstitutions: [],
+  bankLastSuccessfulUpdate: null,
+  bankRefreshing: false,
   limits: Object.fromEntries(CATEGORY_DEFS.map(c => [c.id, c.limit]))
 };
 
@@ -53,7 +55,7 @@ const els = Object.fromEntries([
   'authScreen','appShell','authForm','authEmail','authPassword','togglePasswordBtn','passwordHint','authSubmitBtn','authMessage','logoutBtn','userEmail','syncStatus','syncBadge','refreshBtn',
   'remainingTotal','spentTotal','budgetTotal','statBudget','statSpent','statLeft','monthSelect','exportMonthBtn','monthKpis','dailySpendChart','categoryReportBody','monthArchive','historySort','expenseInput','addBtn','repeatLastBtn','lastExpenseHint','categoryList','insights','transactions','historySearch','editDialog','editAmount','editCategory','editDescription',
   'saveExpenseBtn','dialogTitle','deleteExpenseBtn','parsedPreview','monthLabel','prevMonthBtn','nextMonthBtn','todayMonthBtn','historyFilter','editLimitDialog',
-  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn','reviewTabBadge','monthNavSection','budgetTabPanel','historyTabPanel','analyticsTabPanel','budgetHeroSection','budgetStatsSection','budgetEntrySection','budgetCategoriesSection','analyticsExplorerSection','analyticsInsightsSection','historySection','dashboardOverview','dashboardMonthTitle','dashboardReviewBtn','dashboardReviewCount','dashboardShortcutBadge','familyLeft','familyBudget','familySpent','familyProgress','businessLeft','businessLeftLabel','businessBudget','businessSpent','businessProgress','dashboardTopCategories','dashboardMiniTrend'
+  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn','reviewTabBadge','monthNavSection','budgetTabPanel','historyTabPanel','analyticsTabPanel','budgetHeroSection','budgetStatsSection','budgetEntrySection','budgetCategoriesSection','analyticsExplorerSection','analyticsInsightsSection','historySection','projectTabPanel','copyProjectContextBtn','exportProjectContextBtn','projectContextText','projectNotes','projectNotesSaved','dashboardOverview','dashboardMonthTitle','dashboardReviewBtn','dashboardReviewCount','dashboardShortcutBadge','familyLeft','familyBudget','familySpent','familyProgress','businessLeft','businessLeftLabel','businessBudget','businessSpent','businessProgress','dashboardTopCategories','dashboardMiniTrend','bankFreshness'
 ].map(id => [id, document.querySelector('#'+id)]));
 
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
@@ -146,14 +148,14 @@ function showReviewNotice(message,kind='ok'){
   els.reviewNotice.hidden=false; els.reviewNotice.textContent=message; els.reviewNotice.classList.toggle('error',kind==='error'); els.reviewNotice.classList.toggle('success',kind==='ok');
 }
 function setActiveTab(tab,{scroll=true}={}){
-  const allowed=['review','budget','history','analytics'];
+  const allowed=['review','budget','history','analytics','project'];
   if(!allowed.includes(tab))tab='budget';
   state.activeTab=tab;
   localStorage.setItem('budgetFlowActiveTab',tab);
   document.body.dataset.activeTab=tab;
   document.querySelectorAll('.app-tab').forEach(btn=>btn.classList.toggle('active',btn.dataset.appTab===tab));
 
-  const pages=[els.reviewSection,els.budgetTabPanel,els.historyTabPanel,els.analyticsTabPanel];
+  const pages=[els.reviewSection,els.budgetTabPanel,els.historyTabPanel,els.analyticsTabPanel,els.projectTabPanel];
   pages.forEach(page=>{
     if(!page)return;
     const pageName=page.dataset.tabPage || page.dataset.tabPanel || (page===els.reviewSection?'review':'');
@@ -164,7 +166,7 @@ function setActiveTab(tab,{scroll=true}={}){
   });
 
   els.dashboardContent.hidden=tab==='review';
-  els.monthNavSection.hidden=tab==='review';
+  els.monthNavSection.hidden=tab==='review'||tab==='project';
   if(scroll)window.scrollTo({top:0,behavior:'smooth'});
 }
 function updatePrimaryView(forceReview=false){
@@ -276,12 +278,23 @@ async function apiFetch(path, options={}){
   if(!res.ok) throw new Error(body.error||`Server error ${res.status}`);
   return body;
 }
+function formatBankFreshness(iso){
+  if(!iso)return 'Bank update: unknown';
+  const d=new Date(iso); if(Number.isNaN(d.getTime()))return 'Bank update: unknown';
+  const diff=Math.max(0,Date.now()-d.getTime()); const mins=Math.floor(diff/60000);
+  if(mins<1)return 'Bank update: just now';
+  if(mins<60)return `Bank update: ${mins}m ago`;
+  const hrs=Math.floor(mins/60); if(hrs<24)return `Bank update: ${hrs}h ago`;
+  return `Bank update: ${d.toLocaleDateString([], {month:'short',day:'numeric'})}`;
+}
 function renderBankStatus(){
   if(!els.connectBankBtn||!els.syncBankBtn)return;
   els.connectBankBtn.textContent=state.bankConnected?'Add Bank':'Connect Bank';
-  els.syncBankBtn.disabled=!state.bankConnected;
+  els.syncBankBtn.textContent=state.bankRefreshing?'Refreshing…':'Refresh Bank';
+  els.syncBankBtn.disabled=!state.bankConnected||state.bankRefreshing;
   const names=state.bankInstitutions.map(x=>x.institution_name).filter(Boolean);
-  els.syncBankBtn.title=names.length?`Connected: ${names.join(', ')}`:(state.bankConnected?'Bank connected':'Connect a bank first');
+  els.syncBankBtn.title=names.length?`On-demand refresh: ${names.join(', ')}`:(state.bankConnected?'Refresh connected bank':'Connect a bank first');
+  if(els.bankFreshness){els.bankFreshness.textContent=state.bankConnected?formatBankFreshness(state.bankLastSuccessfulUpdate):'';els.bankFreshness.hidden=!state.bankConnected;}
 }
 async function loadBankStatus(){
   if(!currentUser)return;
@@ -289,9 +302,11 @@ async function loadBankStatus(){
     const data=await apiFetch('/api/plaid-status',{method:'GET'});
     state.bankConnected=Boolean(data.connected);
     state.bankInstitutions=data.items||[];
+    const stamps=state.bankInstitutions.map(x=>x.last_successful_update).filter(Boolean).sort();
+    state.bankLastSuccessfulUpdate=stamps.length?stamps[stamps.length-1]:null;
   }catch(err){
     console.warn('Plaid status unavailable',err.message);
-    state.bankConnected=false;state.bankInstitutions=[];
+    state.bankConnected=false;state.bankInstitutions=[];state.bankLastSuccessfulUpdate=null;
   }
   renderBankStatus();
 }
@@ -332,6 +347,38 @@ async function syncBank({silent=false}={}){
     setSyncStatus('Синхронизировано');
   }catch(err){console.error(err);if(!silent){setSyncStatus('Ошибка банка','error');showReviewNotice(err.message,'error');}}
   finally{els.syncBankBtn.disabled=!state.bankConnected;}
+}
+
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+async function refreshBankNow(){
+  if(!currentUser||!state.bankConnected||state.bankRefreshing)return;
+  const baseline=state.bankLastSuccessfulUpdate;
+  state.bankRefreshing=true;renderBankStatus();setSyncStatus('Запрашиваю свежие операции…','syncing');
+  try{
+    const result=await apiFetch('/api/plaid-refresh',{method:'POST',body:'{}'});
+    showReviewNotice(`Plaid проверяет банк сейчас. Запрошено подключений: ${result.requested||0}.`,'ok');
+    let found=false;
+    for(let i=0;i<10;i++){
+      await sleep(i===0?2500:3000);
+      let sync={added:0,modified:0,removed:0};
+      try{sync=await apiFetch('/api/plaid-sync',{method:'POST',body:'{}'});}catch(err){console.warn('Refresh poll sync:',err.message);}
+      await loadBankStatus();
+      await loadReviewTransactions({forceReview:(sync.added||0)>0});
+      const freshnessChanged=Boolean(state.bankLastSuccessfulUpdate&&state.bankLastSuccessfulUpdate!==baseline);
+      if((sync.added||0)>0||(sync.modified||0)>0||freshnessChanged){
+        found=true;
+        showReviewNotice(`Банк обновлён: новых ${sync.added||0}, обновлено ${sync.modified||0}.`,'ok');
+        break;
+      }
+    }
+    if(!found)showReviewNotice('Refresh отправлен. Plaid ещё обновляет банк; новые операции появятся автоматически через webhook, как только будут готовы.','ok');
+    setSyncStatus('Синхронизировано');
+  }catch(err){
+    console.error(err);setSyncStatus('Ошибка банка','error');
+    const msg=/refresh|product|access|support/i.test(err.message)?`${err.message} Если Plaid пишет, что Refresh недоступен, включи Transactions Refresh add-on в Plaid.`:err.message;
+    showReviewNotice(msg,'error');
+  }finally{state.bankRefreshing=false;renderBankStatus();}
 }
 
 async function loadLimits(){
@@ -618,6 +665,29 @@ function render(){
   renderDashboard(); renderMonthlyExplorer(); renderInsights(); renderHistory();
 }
 
+function getProjectContextText(){
+  return (els.projectContextText?.textContent || '').trim();
+}
+async function copyProjectContext(){
+  const text=getProjectContextText();
+  if(!text)return;
+  try{
+    await navigator.clipboard.writeText(text);
+    if(els.copyProjectContextBtn){const old=els.copyProjectContextBtn.textContent;els.copyProjectContextBtn.textContent='Copied ✓';setTimeout(()=>els.copyProjectContextBtn.textContent=old,1400);}
+  }catch{
+    const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  }
+}
+function exportProjectContext(){
+  const text=getProjectContextText();
+  const notes=(els.projectNotes?.value||'').trim();
+  const body=`Budget Flow Project Context\nUpdated: 2026-10-05\n\n${text}${notes?`\n\nMY NOTES\n${notes}`:''}`;
+  const blob=new Blob([body],{type:'text/plain;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='budget-flow-project-context.txt';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),500);
+}
+function loadProjectNotes(){if(els.projectNotes)els.projectNotes.value=localStorage.getItem('budgetFlowProjectNotes')||'';}
+function saveProjectNotes(){if(!els.projectNotes)return;localStorage.setItem('budgetFlowProjectNotes',els.projectNotes.value);if(els.projectNotesSaved){els.projectNotesSaved.hidden=false;clearTimeout(saveProjectNotes.timer);saveProjectNotes.timer=setTimeout(()=>els.projectNotesSaved.hidden=true,1000);}}
+
 function setSignedInView(isSignedIn){
   els.authScreen.hidden = isSignedIn;
   els.appShell.hidden = !isSignedIn;
@@ -679,7 +749,7 @@ document.querySelectorAll('.view-btn').forEach(btn=>btn.addEventListener('click'
 els.prevMonthBtn.addEventListener('click',()=>shiftMonth(-1)); els.nextMonthBtn.addEventListener('click',()=>shiftMonth(1)); els.todayMonthBtn.addEventListener('click',setThisMonth);
 els.saveLimitBtn.addEventListener('click',saveLimit); els.resetLimitBtn.addEventListener('click',resetLimit);
 els.connectBankBtn.addEventListener('click',connectBank);
-els.syncBankBtn.addEventListener('click',()=>syncBank());
+els.syncBankBtn.addEventListener('click',refreshBankNow);
 els.importCsvBtn.addEventListener('click',()=>els.bankCsvInput.click());
 els.reviewImportBtn.addEventListener('click',()=>els.bankCsvInput.click());
 els.bankCsvInput.addEventListener('change',()=>importBankCsv(els.bankCsvInput.files?.[0]));
@@ -689,6 +759,10 @@ document.querySelectorAll('.app-tab').forEach(btn=>btn.addEventListener('click',
 document.querySelectorAll('[data-nav-tab]').forEach(btn=>btn.addEventListener('click',()=>{const tab=btn.dataset.navTab;state.reviewDismissed=tab!=='review';setActiveTab(tab);}));
 document.querySelectorAll('[data-dashboard-scope]').forEach(btn=>btn.addEventListener('click',()=>{state.scope=btn.dataset.dashboardScope;localStorage.setItem('budgetFlowScope',state.scope);render();document.querySelector('#budgetEntrySection')?.scrollIntoView({behavior:'smooth',block:'start'});}));
 els.dashboardReviewBtn?.addEventListener('click',()=>{state.reviewDismissed=false;setActiveTab('review');});
+els.copyProjectContextBtn?.addEventListener('click',copyProjectContext);
+els.exportProjectContextBtn?.addEventListener('click',exportProjectContext);
+els.projectNotes?.addEventListener('input',saveProjectNotes);
+loadProjectNotes();
 
 sb.auth.onAuthStateChange((_event,session)=>showApp(session));
 (async()=>{const {data}=await sb.auth.getSession();await showApp(data.session);})();

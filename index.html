@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0f172a" />
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=9.0" />
+  <link rel="stylesheet" href="styles.css?v=9.2" />
   <title>Budget Flow</title>
 </head>
 <body>
@@ -20,14 +20,15 @@
   </section>
 
   <main id="appShell" class="app-shell is-hidden" hidden>
-    <header class="topbar"><div><p class="eyebrow" id="monthLabel">MONTH BUDGET</p><h1>Budget Flow</h1></div><div class="top-actions"><button id="connectBankBtn" class="ghost-btn">Connect Bank</button><button id="syncBankBtn" class="ghost-btn" disabled>Sync Bank</button><button id="importCsvBtn" class="ghost-btn">Импорт CSV</button><span id="syncBadge" class="sync-badge">Cloud</span><button id="logoutBtn" class="ghost-btn">Выйти</button></div></header>
-    <div class="account-row"><span id="userEmail" class="muted"></span><span id="syncStatus" class="muted">Синхронизировано</span></div>
+    <header class="topbar"><div><p class="eyebrow" id="monthLabel">MONTH BUDGET</p><h1>Budget Flow</h1></div><div class="top-actions"><button id="connectBankBtn" class="ghost-btn">Connect Bank</button><button id="syncBankBtn" class="ghost-btn" disabled>Refresh Bank</button><button id="importCsvBtn" class="ghost-btn">Импорт CSV</button><span id="syncBadge" class="sync-badge">Cloud</span><button id="logoutBtn" class="ghost-btn">Выйти</button></div></header>
+    <div class="account-row"><span id="userEmail" class="muted"></span><span class="bank-meta"><span id="bankFreshness" class="bank-freshness muted" hidden></span><span id="syncStatus" class="muted">Синхронизировано</span></span></div>
 
     <nav class="app-tabs" aria-label="Разделы Budget Flow">
       <button class="app-tab" data-app-tab="review" type="button">Review <span id="reviewTabBadge" class="tab-badge" hidden>0</span></button>
       <button class="app-tab active" data-app-tab="budget" type="button">Dashboard</button>
       <button class="app-tab" data-app-tab="history" type="button">History</button>
       <button class="app-tab" data-app-tab="analytics" type="button">Analytics</button>
+      <button class="app-tab" data-app-tab="project" type="button">Project</button>
     </nav>
 
     <input id="bankCsvInput" type="file" accept=".csv,text/csv" hidden />
@@ -121,6 +122,144 @@
 
     <section id="analyticsInsightsSection"><div class="section-title-row"><h2>Аналитика</h2><span class="muted">за выбранный месяц</span></div><div id="insights" class="insights-grid"></div></section>
       </section>
+
+      <section id="projectTabPanel" class="app-tab-panel tab-page" data-tab-panel="project" data-tab-page="project" hidden>
+        <section class="project-notebook">
+          <div class="project-hero">
+            <div>
+              <p class="eyebrow">BUDGET FLOW PROJECT NOTEBOOK</p>
+              <h2>Вся история проекта в одном месте</h2>
+              <p class="muted">Это рабочая памятка по приложению: архитектура, принятые решения, версии, деплой и контекст для нового чата.</p>
+            </div>
+            <div class="project-actions">
+              <button id="copyProjectContextBtn" class="primary-btn" type="button">Copy context</button>
+              <button id="exportProjectContextBtn" class="ghost-btn" type="button">Export .txt</button>
+            </div>
+          </div>
+
+          <div class="project-status-grid">
+            <article class="project-status-card"><span>Current</span><strong>v9.1</strong><small>v9 dashboard + project notebook</small></article>
+            <article class="project-status-card"><span>Bank</span><strong>Plaid Production</strong><small>Bank of America → Review Queue</small></article>
+            <article class="project-status-card"><span>Cloud</span><strong>Supabase</strong><small>Auth, expenses, limits, bank queue</small></article>
+            <article class="project-status-card"><span>Deploy</span><strong>Vercel</strong><small>GitHub main → automatic deploy</small></article>
+          </div>
+
+          <details class="project-section" open>
+            <summary>Как сейчас устроен Budget Flow</summary>
+            <div class="project-section-body">
+              <div class="project-flow">
+                <span>Bank of America</span><b>→</b><span>Plaid Production</span><b>→</b><span>Vercel API</span><b>→</b><span>Review</span><b>→</b><span>Family / Business</span><b>→</b><span>Supabase</span>
+              </div>
+              <ul class="project-list">
+                <li><b>Review:</b> новые банковские транзакции сначала проверяются вручную.</li>
+                <li><b>Pending:</b> pending-списания показываются сразу и после Approve считаются расходом сразу; когда операция станет posted, приложение должно связать её без дубля.</li>
+                <li><b>Family / Business:</b> у каждого типа бюджета свой отдельный набор категорий.</li>
+                <li><b>Dashboard:</b> Family и Business сводки, top categories и spending trend.</li>
+                <li><b>History:</b> история выбранного месяца, поиск, сортировка, фильтры Family / Business.</li>
+                <li><b>Analytics:</b> Monthly Explorer, расходы по дням, таблица категорий и архив месяцев.</li>
+                <li><b>Auth:</b> окно входа полностью исчезает после логина и возвращается только после Logout.</li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="project-section" open>
+            <summary>Критичные правила — не ломать при следующих апдейтах</summary>
+            <div class="project-section-body">
+              <ul class="project-list project-rules">
+                <li>Никогда не класть <code>PLAID_SECRET</code> или <code>SUPABASE_SECRET_KEY</code> во frontend / GitHub.</li>
+                <li>Секреты живут только в Vercel Environment Variables.</li>
+                <li>При наличии новых банковских операций первым открывается Review; иначе Dashboard.</li>
+                <li>Approve pending-транзакции сразу влияет на текущий месяц.</li>
+                <li>При переходе pending → posted нельзя создавать второй расход.</li>
+                <li>Family-категории не должны появляться в Business и наоборот.</li>
+                <li>Каждая основная вкладка должна физически скрывать контент остальных вкладок.</li>
+                <li>При регистрации кириллица в пароле запрещена; глазик показать/скрыть пароль должен остаться.</li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="project-section">
+            <summary>Инфраструктура и файлы</summary>
+            <div class="project-section-body project-two-col">
+              <div>
+                <h3>Vercel Environment Variables</h3>
+                <code class="project-code-block">PLAID_CLIENT_ID
+PLAID_SECRET
+PLAID_ENV=production
+SUPABASE_SECRET_KEY</code>
+                <p class="project-warning">Значения секретов сюда не записываем.</p>
+              </div>
+              <div>
+                <h3>Supabase SQL</h3>
+                <ul class="project-list compact">
+                  <li><code>budget_limits.sql</code> — лимиты категорий</li>
+                  <li><code>bank_transactions.sql</code> — Review Queue</li>
+                  <li><code>plaid_setup.sql</code> — серверное хранение Plaid connections</li>
+                </ul>
+              </div>
+              <div>
+                <h3>Frontend</h3>
+                <ul class="project-list compact"><li><code>index.html</code></li><li><code>app.js</code></li><li><code>styles.css</code></li><li><code>sw.js</code></li></ul>
+              </div>
+              <div>
+                <h3>Backend</h3>
+                <ul class="project-list compact"><li><code>api/plaid-link-token.js</code></li><li><code>api/plaid-exchange.js</code></li><li><code>api/plaid-sync.js</code></li><li><code>api/plaid-status.js</code></li></ul>
+              </div>
+            </div>
+          </details>
+
+          <details class="project-section" open>
+            <summary>История версий</summary>
+            <div class="project-section-body">
+              <div class="project-timeline">
+                <div><b>v1</b><span>MVP: ручной ввод, категории, остаток бюджета.</span></div>
+                <div><b>v2</b><span>Несколько расходов одной строкой, редактирование и удаление.</span></div>
+                <div><b>v3</b><span>Supabase Auth + облачная синхронизация.</span></div>
+                <div><b>v4</b><span>Месяцы, история, редактируемые лимиты.</span></div>
+                <div><b>v4.1</b><span>Глазик пароля + запрет кириллицы при регистрации.</span></div>
+                <div><b>v5</b><span>Monthly summary, поиск, предупреждения по лимитам.</span></div>
+                <div><b>v5.1</b><span>Auth UI полностью скрывается после входа.</span></div>
+                <div><b>v6</b><span>Review Queue + CSV import.</span></div>
+                <div><b>v6.1</b><span>Раздельные категории Family / Business.</span></div>
+                <div><b>v7</b><span>Plaid Production + прямой sync банка через Vercel API.</span></div>
+                <div><b>v8</b><span>Monthly Explorer, таблицы и архив месяцев.</span></div>
+                <div><b>v8.1</b><span>Pending-транзакции учитываются сразу после Approve.</span></div>
+                <div><b>v8.2–8.4</b><span>Настоящие вкладки и исправление изоляции контента / cache.</span></div>
+                <div><b>v9</b><span>Dashboard: Family / Business, top categories, daily trend.</span></div>
+                <div><b>v9.1</b><span>Project Notebook — контекст проекта внутри приложения.</span></div>
+              </div>
+            </div>
+          </details>
+
+          <details class="project-section">
+            <summary>Как обновлять приложение</summary>
+            <div class="project-section-body">
+              <ol class="project-list numbered">
+                <li>Сделать backup текущей стабильной версии.</li>
+                <li>Загрузить новые файлы в корень GitHub repository <code>budget-flow</code>.</li>
+                <li>Проверить, что папка <code>api/</code> тоже обновлена, если менялся Plaid/backend.</li>
+                <li><code>Commit changes</code> → Vercel автоматически deploy.</li>
+                <li>На iPhone полностью закрыть PWA и открыть снова; при проблемах с кэшем удалить Home Screen app и добавить заново.</li>
+                <li>Smoke test: Login → Sync Bank → Review pending → Approve Family + Business → History → Analytics.</li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="project-section" open>
+            <summary>Контекст для нового ChatGPT-чата</summary>
+            <div class="project-section-body">
+              <p class="muted">Нажми Copy context и вставь текст в новый чат — там будет достаточно информации, чтобы продолжить разработку без поиска этой ветки.</p>
+              <pre id="projectContextText" class="project-context-text">Budget Flow — личное PWA-приложение для бюджета. Текущая стабильная архитектура: static HTML/CSS/JS на Vercel, Supabase Auth + Postgres, Plaid Production для Bank of America через serverless /api endpoints. Банк никогда не пишет расход прямо в бюджет: транзакции идут в Review Queue. Pending outflows должны показываться сразу; после ручного Approve они сразу считаются расходом. При pending→posted нужно reconciliate без дубля. Family и Business имеют отдельные категории. Основные вкладки: Review, Dashboard, History, Analytics, Project. Если Review не пуст — при входе открывать Review, иначе Dashboard. Auth form полностью скрыта после входа. Секреты Plaid/Supabase только в Vercel env, не во frontend. Существующие SQL: budget_limits.sql, bank_transactions.sql, plaid_setup.sql. Сохранять текущие функции при апдейтах.</pre>
+            </div>
+          </details>
+
+          <section class="project-notes-card">
+            <div class="section-title-row"><div><h2>Мои заметки</h2><span class="muted">сохраняются только на этом устройстве</span></div><span id="projectNotesSaved" class="project-notes-saved" hidden>Saved</span></div>
+            <textarea id="projectNotes" class="project-notes" rows="7" placeholder="Идеи для следующей версии, баги, что проверить…"></textarea>
+          </section>
+        </section>
+      </section>
+
     </div>
   </main>
 
@@ -128,5 +267,5 @@
 
   <dialog id="editLimitDialog"><form method="dialog" class="dialog-card"><h3 id="limitCategoryName">Лимит</h3><label>Месячный лимит<input id="limitAmount" type="number" step="0.01" min="0" required /></label><p class="hint">0 = без лимита. Изменение применяется ко всем месяцам.</p><div class="dialog-actions split-actions"><button id="resetLimitBtn" class="ghost-btn">Сбросить</button><span class="dialog-spacer"></span><button value="cancel" class="ghost-btn">Отмена</button><button id="saveLimitBtn" value="default" class="primary-btn">Сохранить</button></div></form></dialog>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script><script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script><script src="app.js?v=9.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script><script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script><script src="app.js?v=9.2"></script>
 </body></html>
