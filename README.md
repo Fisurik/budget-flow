@@ -61,3 +61,7 @@ It contains:
 - deployment/smoke-test checklist;
 - copy/export context for starting a fresh ChatGPT chat;
 - device-local editable project notes.
+
+
+## v9.3 — Predictive Budget Advisor
+Analytics now includes a forward-looking advisor for the selected scope. It estimates month-end spend from current pace, protects remaining fixed-budget categories as a reserve, infers likely recurring-payment timing from prior months when enough history exists, calculates a safe flexible daily/weekly allowance, and surfaces 7–14 day category-specific slow-down recommendations. No new SQL is required.

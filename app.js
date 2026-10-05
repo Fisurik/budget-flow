@@ -55,7 +55,7 @@ const els = Object.fromEntries([
   'authScreen','appShell','authForm','authEmail','authPassword','togglePasswordBtn','passwordHint','authSubmitBtn','authMessage','logoutBtn','userEmail','syncStatus','syncBadge','refreshBtn',
   'remainingTotal','spentTotal','budgetTotal','statBudget','statSpent','statLeft','monthSelect','exportMonthBtn','monthKpis','dailySpendChart','categoryReportBody','monthArchive','historySort','expenseInput','addBtn','repeatLastBtn','lastExpenseHint','categoryList','insights','transactions','historySearch','editDialog','editAmount','editCategory','editDescription',
   'saveExpenseBtn','dialogTitle','deleteExpenseBtn','parsedPreview','monthLabel','prevMonthBtn','nextMonthBtn','todayMonthBtn','historyFilter','editLimitDialog',
-  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn','reviewTabBadge','monthNavSection','budgetTabPanel','historyTabPanel','analyticsTabPanel','budgetHeroSection','budgetStatsSection','budgetEntrySection','budgetCategoriesSection','analyticsExplorerSection','analyticsInsightsSection','historySection','projectTabPanel','copyProjectContextBtn','exportProjectContextBtn','projectContextText','projectNotes','projectNotesSaved','dashboardOverview','dashboardMonthTitle','dashboardReviewBtn','dashboardReviewCount','dashboardShortcutBadge','familyLeft','familyBudget','familySpent','familyProgress','businessLeft','businessLeftLabel','businessBudget','businessSpent','businessProgress','dashboardTopCategories','dashboardMiniTrend','bankFreshness'
+  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn','reviewTabBadge','monthNavSection','budgetTabPanel','historyTabPanel','analyticsTabPanel','budgetHeroSection','budgetStatsSection','budgetEntrySection','budgetCategoriesSection','analyticsExplorerSection','analyticsInsightsSection','historySection','projectTabPanel','advisorSection','advisorStatus','advisorSummary','advisorActions','advisorBills','advisorNote','copyProjectContextBtn','exportProjectContextBtn','projectContextText','projectNotes','projectNotesSaved','dashboardOverview','dashboardMonthTitle','dashboardReviewBtn','dashboardReviewCount','dashboardShortcutBadge','familyLeft','familyBudget','familySpent','familyProgress','businessLeft','businessLeftLabel','businessBudget','businessSpent','businessProgress','dashboardTopCategories','dashboardMiniTrend','bankFreshness'
 ].map(id => [id, document.querySelector('#'+id)]));
 
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
@@ -67,6 +67,83 @@ function money2(n) { return new Intl.NumberFormat('en-US',{style:'currency',curr
 function getCategory(id) { return CATEGORY_DEFS.find(c => c.id === id); }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[ch])); }
 function categoryLimit(id) { return Number(state.limits[id] ?? getCategory(id)?.limit ?? 0); }
+
+const ADVISOR_FIXED_IDS = ['rent','electricity','phone','internet','gas_home','insurance','subscriptions','debt'];
+const ADVISOR_DISCRETIONARY_IDS = ['eating_out','subscriptions','other','groceries'];
+function median(values){
+  const a=values.filter(Number.isFinite).slice().sort((x,y)=>x-y);
+  if(!a.length)return null; const m=Math.floor(a.length/2); return a.length%2?a[m]:(a[m-1]+a[m])/2;
+}
+function advisorScopeMatch(t){return state.reportScope==='all'||t.scope===state.reportScope;}
+function advisorRecurringProfile(categoryId){
+  const rows=state.archiveTransactions.filter(t=>t.categoryId===categoryId && advisorScopeMatch(t) && (t.spentAt||'').slice(0,7)!==state.selectedMonth);
+  const byMonth=new Map(); const days=[];
+  for(const t of rows){const key=(t.spentAt||'').slice(0,7); if(!key)continue; byMonth.set(key,(byMonth.get(key)||0)+t.amount); const d=Number((t.spentAt||'').slice(8,10)); if(d)days.push(d);}
+  const monthly=[...byMonth.values()];
+  return {months:monthly.length, amount:median(monthly), dueDay:median(days)};
+}
+function renderAdvisor(){
+  if(!els.advisorSummary)return;
+  const [y,m]=state.selectedMonth.split('-').map(Number); const daysInMonth=new Date(y,m,0).getDate();
+  const today=new Date(); const isCurrent=state.selectedMonth===monthKey(today); const elapsed=isCurrent?Math.min(today.getDate(),daysInMonth):daysInMonth; const daysLeft=Math.max(0,daysInMonth-elapsed);
+  const txs=reportTransactions(); const spent=txs.reduce((s,t)=>s+t.amount,0); const budget=scopeBudgetTotal(state.reportScope);
+  const scopeCats=CATEGORY_DEFS.filter(c=>state.reportScope==='all'||c.scope===state.reportScope);
+  const fixedCats=scopeCats.filter(c=>ADVISOR_FIXED_IDS.includes(c.id) && categoryLimit(c.id)>0);
+  const obligations=fixedCats.map(c=>{
+    const currentSpent=txs.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
+    const profile=advisorRecurringProfile(c.id); const limit=categoryLimit(c.id);
+    const expected=Math.max(limit,profile.amount||0); const remaining=Math.max(0,expected-currentSpent);
+    const dueDay=profile.dueDay?Math.max(1,Math.min(daysInMonth,Math.round(profile.dueDay))):null;
+    return {c,currentSpent,expected,remaining,dueDay,months:profile.months};
+  }).filter(x=>x.remaining>1);
+  const reserve=obligations.reduce((s,x)=>s+x.remaining,0);
+  const fixedSpent=txs.filter(t=>ADVISOR_FIXED_IDS.includes(t.categoryId)).reduce((s,t)=>s+t.amount,0);
+  const variableSpent=Math.max(0,spent-fixedSpent);
+  const projectedVariable=isCurrent&&elapsed>0?variableSpent/elapsed*daysInMonth:variableSpent;
+  const projected=Math.max(spent, projectedVariable+fixedSpent+reserve);
+  const projectedDiff=budget>0?budget-projected:null;
+  const flexibleLeft=budget>0?Math.max(0,budget-spent-reserve):0;
+  const safeDaily=daysLeft>0?flexibleLeft/daysLeft:flexibleLeft;
+  const safeWeekly=safeDaily*7;
+  let risk='On track', riskClass='good';
+  if(budget>0 && projected>budget*1.1){risk='High risk';riskClass='danger';}
+  else if(budget>0 && projected>budget){risk='Watch spending';riskClass='warn';}
+  else if(budget<=0){risk='No budget';riskClass='neutral';}
+  els.advisorStatus.textContent=isCurrent?risk:'Historical month'; els.advisorStatus.className=`advisor-status ${riskClass}`;
+  els.advisorSummary.innerHTML=`
+    <article class="advisor-kpi"><span>Month-end forecast</span><strong>${money2(projected)}</strong><small>${budget>0?(projectedDiff>=0?`${money2(projectedDiff)} below budget`:`${money2(Math.abs(projectedDiff))} over budget`):'set limits for a full plan'}</small></article>
+    <article class="advisor-kpi"><span>Reserved for bills</span><strong>${money2(reserve)}</strong><small>${obligations.length} likely payment${obligations.length===1?'':'s'} remaining</small></article>
+    <article class="advisor-kpi"><span>Safe flexible spend</span><strong>${budget>0?money2(safeDaily):'—'}<em>/day</em></strong><small>${budget>0?`${money2(safeWeekly)} / week`:'budget limits required'}</small></article>
+    <article class="advisor-kpi"><span>Days left</span><strong>${daysLeft}</strong><small>${isCurrent?`day ${elapsed} of ${daysInMonth}`:'month complete'}</small></article>`;
+
+  if(!isCurrent){els.advisorActions.innerHTML='<div class="advisor-empty">Выбери текущий месяц, чтобы увидеть живой прогноз и план на следующие недели.</div>';els.advisorBills.innerHTML='<div class="advisor-empty">Для прошлых месяцев Advisor показывает только итоговую аналитику.</div>';els.advisorNote.textContent='';return;}
+
+  const pressure=scopeCats.map(c=>{
+    const limit=categoryLimit(c.id); const catSpent=txs.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
+    if(limit<=0||catSpent<=0)return null; const expectedToDate=limit*(elapsed/daysInMonth); const ratio=expectedToDate>0?catSpent/expectedToDate:0; const overPace=Math.max(0,catSpent-expectedToDate); return {c,limit,spent:catSpent,ratio,overPace,left:limit-catSpent};
+  }).filter(Boolean);
+  const cuts=pressure.filter(x=>ADVISOR_DISCRETIONARY_IDS.includes(x.c.id)&&x.ratio>1.15).sort((a,b)=>b.ratio-a.ratio);
+  const actions=[];
+  if(budget>0 && projected>budget){
+    const need=Math.max(0,projected-budget); const perDay=daysLeft?need/daysLeft:need; actions.push({kind:'danger',title:`Нужно замедлиться примерно на ${money2(perDay)} в день`,text:`Текущий темп ведёт к перерасходу примерно ${money2(need)} к концу месяца.`});
+  }else if(budget>0){actions.push({kind:'good',title:`Держи гибкие расходы около ${money2(safeDaily)} в день`,text:`Это оставляет ${money2(reserve)} зарезервированными под обязательные платежи.`});}
+  for(const x of cuts.slice(0,3)){
+    const pause=Math.min(14,Math.max(7,Math.round((x.ratio-1)*10+7)));
+    actions.push({kind:x.ratio>1.6?'danger':'warn',title:`${x.c.icon} ${x.c.name}: притормози на ${pause} дней`,text:`Уже ${money2(x.spent)} при нормальном темпе около ${money2(x.limit*elapsed/daysInMonth)} к сегодняшнему дню. Остаток категории: ${money2(x.left)}.`});
+  }
+  if(!cuts.length && budget>0 && projected<=budget){actions.push({kind:'good',title:'Сильных перекосов по гибким категориям нет',text:'Продолжай текущий темп и не трать резерв, отложенный на обязательные платежи.'});}
+  if(state.reportScope==='all' && CATEGORY_DEFS.some(c=>c.scope==='business'&&categoryLimit(c.id)<=0)){actions.push({kind:'neutral',title:'Business пока без лимитов',text:'Бизнес-расходы с нулевыми лимитами могут искажать общий прогноз. Для точного advisor задай им месячные бюджеты или переключи Analytics на Family.'});}
+  els.advisorActions.innerHTML=actions.map(a=>`<div class="advisor-action ${a.kind}"><span class="advisor-dot"></span><div><strong>${escapeHtml(a.title)}</strong><small>${escapeHtml(a.text)}</small></div></div>`).join('');
+
+  obligations.sort((a,b)=>(a.dueDay??99)-(b.dueDay??99));
+  els.advisorBills.innerHTML=obligations.length?obligations.slice(0,6).map(x=>{
+    const when=x.dueDay?(x.dueDay<elapsed?'ожидается сейчас':`≈ ${x.dueDay} числа`):'до конца месяца';
+    return `<div class="advisor-bill"><div><strong>${x.c.icon} ${escapeHtml(x.c.name)}</strong><small>${when}${x.months>=2?` · история ${x.months} мес.`:' · по лимиту'}</small></div><b>${money2(x.remaining)}</b></div>`;
+  }).join(''):'<div class="advisor-empty">По текущим данным обязательные платежи уже покрыты или не распознаны.</div>';
+
+  const next14=obligations.filter(x=>!x.dueDay || x.dueDay<=Math.min(daysInMonth,elapsed+14)).reduce((s,x)=>s+x.remaining,0);
+  els.advisorNote.innerHTML=budget>0?`<strong>План на ближайшие 14 дней:</strong> не трогай примерно <b>${money2(next14)}</b>, которые могут понадобиться на ближайшие обязательства. Свободный запас после всех резервов — <b>${money2(flexibleLeft)}</b>. Прогноз пересчитывается каждый раз после синхронизации банка.`:'Чтобы Advisor мог давать безопасный дневной лимит, задай месячные лимиты категориям.';
+}
 
 function setSyncStatus(text, kind='ok') {
   els.syncStatus.textContent = text;
@@ -662,7 +739,7 @@ function render(){
   els.categoryList.innerHTML=visible.map(c=>{const limit=categoryLimit(c.id),spent=state.transactions.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0),remaining=limit>0?limit-spent:null,rawPct=limit>0?(spent/limit)*100:0,pct=Math.min(100,rawPct),cls=rawPct>=100?'danger':rawPct>=80?'warn':'',cardCls=rawPct>=100?'over-budget':rawPct>=80?'near-limit':'',note=rawPct>=100?`<div class="limit-note danger">Превышение ${money2(spent-limit)}</div>`:rawPct>=80?`<div class="limit-note warn">Осталось ${money2(remaining)}</div>`:'';return `<article class="category-card ${cardCls}"><div class="category-head"><div><div class="category-name">${c.icon} ${c.name}</div><div class="category-meta">Потрачено ${money2(spent)}${limit>0?` из ${money2(limit)}`:''}</div>${note}</div><div class="category-actions"><div class="category-remaining">${limit>0?`${money2(remaining)} left`:money2(spent)}</div><button class="mini-btn edit-limit-btn" data-category="${c.id}">Лимит</button></div></div>${limit>0?`<div class="progress"><div class="${cls}" style="width:${pct}%"></div></div>`:''}</article>`;}).join('');
   els.categoryList.querySelectorAll('.edit-limit-btn').forEach(b=>b.addEventListener('click',()=>openLimitDialog(b.dataset.category)));
   const last=lastExpenseForScope(); els.repeatLastBtn.disabled=!last; els.lastExpenseHint.textContent=last?`${last.description} · ${money2(last.amount)}`:'Пока нечего повторять';
-  renderDashboard(); renderMonthlyExplorer(); renderInsights(); renderHistory();
+  renderDashboard(); renderAdvisor(); renderMonthlyExplorer(); renderInsights(); renderHistory();
 }
 
 function getProjectContextText(){
