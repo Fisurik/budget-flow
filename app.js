@@ -53,7 +53,7 @@ const els = Object.fromEntries([
   'authScreen','appShell','authForm','authEmail','authPassword','togglePasswordBtn','passwordHint','authSubmitBtn','authMessage','logoutBtn','userEmail','syncStatus','syncBadge','refreshBtn',
   'remainingTotal','spentTotal','budgetTotal','statBudget','statSpent','statLeft','monthSelect','exportMonthBtn','monthKpis','dailySpendChart','categoryReportBody','monthArchive','historySort','expenseInput','addBtn','repeatLastBtn','lastExpenseHint','categoryList','insights','transactions','historySearch','editDialog','editAmount','editCategory','editDescription',
   'saveExpenseBtn','dialogTitle','deleteExpenseBtn','parsedPreview','monthLabel','prevMonthBtn','nextMonthBtn','todayMonthBtn','historyFilter','editLimitDialog',
-  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn','reviewTabBadge','monthNavSection','budgetTabPanel','historyTabPanel','analyticsTabPanel','budgetHeroSection','budgetStatsSection','budgetEntrySection','budgetCategoriesSection','analyticsExplorerSection','analyticsInsightsSection','historySection'
+  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn','reviewTabBadge','monthNavSection','budgetTabPanel','historyTabPanel','analyticsTabPanel','budgetHeroSection','budgetStatsSection','budgetEntrySection','budgetCategoriesSection','analyticsExplorerSection','analyticsInsightsSection','historySection','dashboardOverview','dashboardMonthTitle','dashboardReviewBtn','dashboardReviewCount','dashboardShortcutBadge','familyLeft','familyBudget','familySpent','familyProgress','businessLeft','businessLeftLabel','businessBudget','businessSpent','businessProgress','dashboardTopCategories','dashboardMiniTrend'
 ].map(id => [id, document.querySelector('#'+id)]));
 
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
@@ -549,6 +549,62 @@ function renderHistory(){
   els.transactions.querySelectorAll('[data-id]').forEach(row=>row.addEventListener('click',()=>{const tx=state.transactions.find(t=>t.id===row.dataset.id);if(!tx)return;editingId=tx.id;pendingExpenses=[];openEditDialog(tx,true);}));
 }
 
+function renderDashboard(){
+  if(!els.dashboardOverview)return;
+  const monthDate=selectedMonthDate();
+  els.dashboardMonthTitle.textContent=monthDate.toLocaleDateString('ru-RU',{month:'long',year:'numeric'});
+  const all=state.transactions;
+  const familyTx=all.filter(t=>t.scope==='personal');
+  const businessTx=all.filter(t=>t.scope==='business');
+  const familyBudget=CATEGORY_DEFS.filter(c=>c.scope==='personal').reduce((s,c)=>s+categoryLimit(c.id),0);
+  const businessBudget=CATEGORY_DEFS.filter(c=>c.scope==='business').reduce((s,c)=>s+categoryLimit(c.id),0);
+  const familySpent=familyTx.reduce((s,t)=>s+t.amount,0);
+  const businessSpent=businessTx.reduce((s,t)=>s+t.amount,0);
+  const familyLeft=familyBudget-familySpent;
+  const businessLeft=businessBudget-businessSpent;
+  els.familyBudget.textContent=money2(familyBudget);
+  els.familySpent.textContent=money2(familySpent);
+  els.familyLeft.textContent=money2(familyLeft);
+  els.familyLeft.classList.toggle('negative',familyLeft<0);
+  els.familyProgress.style.width=`${Math.min(100,familyBudget>0?familySpent/familyBudget*100:0)}%`;
+  els.businessSpent.textContent=money2(businessSpent);
+  if(businessBudget>0){
+    els.businessBudget.textContent=money2(businessBudget);
+    els.businessLeft.textContent=money2(businessLeft);
+    els.businessLeftLabel.textContent='осталось';
+    els.businessLeft.classList.toggle('negative',businessLeft<0);
+    els.businessProgress.style.width=`${Math.min(100,businessSpent/businessBudget*100)}%`;
+  }else{
+    els.businessBudget.textContent='No limits';
+    els.businessLeft.textContent=money2(businessSpent);
+    els.businessLeftLabel.textContent='потрачено';
+    els.businessLeft.classList.remove('negative');
+    els.businessProgress.style.width='0%';
+  }
+
+  const reviewCount=state.reviewTransactions.length;
+  els.dashboardReviewCount.textContent=reviewCount;
+  els.dashboardReviewBtn.hidden=!reviewCount;
+  els.dashboardShortcutBadge.textContent=reviewCount;
+  els.dashboardShortcutBadge.hidden=!reviewCount;
+
+  const byCat=new Map();
+  for(const t of all) byCat.set(t.categoryId,(byCat.get(t.categoryId)||0)+t.amount);
+  const ranked=[...byCat.entries()].map(([id,spent])=>({c:getCategory(id)||{id,name:'Other',icon:'•',scope:'personal'},spent})).sort((a,b)=>b.spent-a.spent).slice(0,5);
+  const max=ranked[0]?.spent||1;
+  els.dashboardTopCategories.innerHTML=ranked.length?ranked.map((x,i)=>`<div class="dashboard-top-item"><div class="dashboard-top-rank">${i+1}</div><div class="dashboard-top-name"><strong>${x.c.icon} ${escapeHtml(x.c.name)}</strong><small>${x.c.scope==='business'?'Business':'Family'}</small><div class="dashboard-top-bar"><span style="width:${Math.max(5,Math.round(x.spent/max*100))}%"></span></div></div><b>${money2(x.spent)}</b></div>`).join(''):`<div class="dashboard-empty">Пока нет расходов в этом месяце.</div>`;
+
+  const [y,m]=state.selectedMonth.split('-').map(Number);
+  const daysInMonth=new Date(y,m,0).getDate();
+  const byDay=new Map();
+  for(const t of all){const d=Number((t.spentAt||'').slice(8,10));if(d)byDay.set(d,(byDay.get(d)||0)+t.amount);}
+  const maxDay=Math.max(1,...byDay.values());
+  const todayKey=monthKey(new Date());
+  const currentDay=state.selectedMonth===todayKey?new Date().getDate():daysInMonth;
+  const visibleDays=Array.from({length:daysInMonth},(_,i)=>i+1).filter(d=>d<=currentDay);
+  els.dashboardMiniTrend.innerHTML=visibleDays.map(d=>{const v=byDay.get(d)||0;const h=v?Math.max(8,Math.round(v/maxDay*100)):3;return `<div class="mini-day" title="${d}: ${money2(v)}"><span class="mini-day-bar ${v?'has-value':''}" style="height:${h}%"></span><small>${d===1||d%5===0||d===visibleDays.length?d:''}</small></div>`;}).join('');
+}
+
 function render(){
   document.querySelectorAll('.scope-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.scope===state.scope));
   document.querySelectorAll('.history-filter-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.historyScope===state.historyScope));
@@ -559,7 +615,7 @@ function render(){
   els.categoryList.innerHTML=visible.map(c=>{const limit=categoryLimit(c.id),spent=state.transactions.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0),remaining=limit>0?limit-spent:null,rawPct=limit>0?(spent/limit)*100:0,pct=Math.min(100,rawPct),cls=rawPct>=100?'danger':rawPct>=80?'warn':'',cardCls=rawPct>=100?'over-budget':rawPct>=80?'near-limit':'',note=rawPct>=100?`<div class="limit-note danger">Превышение ${money2(spent-limit)}</div>`:rawPct>=80?`<div class="limit-note warn">Осталось ${money2(remaining)}</div>`:'';return `<article class="category-card ${cardCls}"><div class="category-head"><div><div class="category-name">${c.icon} ${c.name}</div><div class="category-meta">Потрачено ${money2(spent)}${limit>0?` из ${money2(limit)}`:''}</div>${note}</div><div class="category-actions"><div class="category-remaining">${limit>0?`${money2(remaining)} left`:money2(spent)}</div><button class="mini-btn edit-limit-btn" data-category="${c.id}">Лимит</button></div></div>${limit>0?`<div class="progress"><div class="${cls}" style="width:${pct}%"></div></div>`:''}</article>`;}).join('');
   els.categoryList.querySelectorAll('.edit-limit-btn').forEach(b=>b.addEventListener('click',()=>openLimitDialog(b.dataset.category)));
   const last=lastExpenseForScope(); els.repeatLastBtn.disabled=!last; els.lastExpenseHint.textContent=last?`${last.description} · ${money2(last.amount)}`:'Пока нечего повторять';
-  renderMonthlyExplorer(); renderInsights(); renderHistory();
+  renderDashboard(); renderMonthlyExplorer(); renderInsights(); renderHistory();
 }
 
 function setSignedInView(isSignedIn){
@@ -589,7 +645,9 @@ async function showApp(session){
   els.authPassword.value='';
   els.userEmail.textContent=currentUser.email||'';
   state.reviewDismissed=false;
-  setActiveTab(state.activeTab,{scroll:false});
+  state.selectedMonth=monthKey(new Date());
+  state.activeTab='budget';
+  setActiveTab('budget',{scroll:false});
   await migrateLocalExpensesOnce();
   await loadLimits();
   await loadBankStatus();
@@ -628,6 +686,9 @@ els.bankCsvInput.addEventListener('change',()=>importBankCsv(els.bankCsvInput.fi
 els.approveAllBtn.addEventListener('click',approveAllReview);
 els.openDashboardBtn.addEventListener('click',()=>{state.reviewDismissed=true;setActiveTab('budget');});
 document.querySelectorAll('.app-tab').forEach(btn=>btn.addEventListener('click',()=>{state.reviewDismissed=btn.dataset.appTab!=='review';setActiveTab(btn.dataset.appTab);}));
+document.querySelectorAll('[data-nav-tab]').forEach(btn=>btn.addEventListener('click',()=>{const tab=btn.dataset.navTab;state.reviewDismissed=tab!=='review';setActiveTab(tab);}));
+document.querySelectorAll('[data-dashboard-scope]').forEach(btn=>btn.addEventListener('click',()=>{state.scope=btn.dataset.dashboardScope;localStorage.setItem('budgetFlowScope',state.scope);render();document.querySelector('#budgetEntrySection')?.scrollIntoView({behavior:'smooth',block:'start'});}));
+els.dashboardReviewBtn?.addEventListener('click',()=>{state.reviewDismissed=false;setActiveTab('review');});
 
 sb.auth.onAuthStateChange((_event,session)=>showApp(session));
 (async()=>{const {data}=await sb.auth.getSession();await showApp(data.session);})();

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0f172a" />
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=8.4" />
+  <link rel="stylesheet" href="styles.css?v=9.0" />
   <title>Budget Flow</title>
 </head>
 <body>
@@ -25,7 +25,7 @@
 
     <nav class="app-tabs" aria-label="Разделы Budget Flow">
       <button class="app-tab" data-app-tab="review" type="button">Review <span id="reviewTabBadge" class="tab-badge" hidden>0</span></button>
-      <button class="app-tab active" data-app-tab="budget" type="button">Budget</button>
+      <button class="app-tab active" data-app-tab="budget" type="button">Dashboard</button>
       <button class="app-tab" data-app-tab="history" type="button">History</button>
       <button class="app-tab" data-app-tab="analytics" type="button">Analytics</button>
     </nav>
@@ -53,6 +53,43 @@
     <section id="monthNavSection" class="month-nav"><button id="prevMonthBtn" class="nav-btn" aria-label="Предыдущий месяц">←</button><button id="todayMonthBtn" class="month-center">Текущий месяц</button><button id="nextMonthBtn" class="nav-btn" aria-label="Следующий месяц">→</button></section>
 
       <section id="budgetTabPanel" class="app-tab-panel tab-page is-active" data-tab-panel="budget" data-tab-page="budget">
+    <section id="dashboardOverview" class="dashboard-overview">
+      <div class="dashboard-heading">
+        <div><p class="eyebrow">MONTH DASHBOARD</p><h2 id="dashboardMonthTitle">Текущий месяц</h2><p class="muted">Family и Business в одном месте</p></div>
+        <button id="dashboardReviewBtn" class="review-alert-btn" type="button" hidden><span id="dashboardReviewCount">0</span> новых → Review</button>
+      </div>
+      <div class="dashboard-scope-grid">
+        <button class="dashboard-scope-card family" type="button" data-dashboard-scope="personal">
+          <div class="dashboard-card-top"><span>🏠 Family</span><span class="dashboard-card-arrow">→</span></div>
+          <div class="dashboard-card-main"><strong id="familyLeft">$0</strong><small>осталось</small></div>
+          <div class="dashboard-card-metrics"><span><small>Budget</small><b id="familyBudget">$0</b></span><span><small>Spent</small><b id="familySpent">$0</b></span></div>
+          <div class="dashboard-progress"><span id="familyProgress"></span></div>
+        </button>
+        <button class="dashboard-scope-card business" type="button" data-dashboard-scope="business">
+          <div class="dashboard-card-top"><span>🧰 Business</span><span class="dashboard-card-arrow">→</span></div>
+          <div class="dashboard-card-main"><strong id="businessLeft">$0</strong><small id="businessLeftLabel">потрачено</small></div>
+          <div class="dashboard-card-metrics"><span><small>Budget</small><b id="businessBudget">—</b></span><span><small>Spent</small><b id="businessSpent">$0</b></span></div>
+          <div class="dashboard-progress"><span id="businessProgress"></span></div>
+        </button>
+      </div>
+      <div class="dashboard-detail-grid">
+        <article class="dashboard-panel">
+          <div class="dashboard-panel-head"><div><strong>Top categories</strong><small>все расходы месяца</small></div><button class="mini-link" data-nav-tab="analytics" type="button">Analytics →</button></div>
+          <div id="dashboardTopCategories" class="dashboard-top-list"></div>
+        </article>
+        <article class="dashboard-panel">
+          <div class="dashboard-panel-head"><div><strong>Spending trend</strong><small>по дням месяца</small></div><button class="mini-link" data-nav-tab="history" type="button">History →</button></div>
+          <div id="dashboardMiniTrend" class="dashboard-mini-trend"></div>
+        </article>
+      </div>
+      <div class="dashboard-shortcuts">
+        <button type="button" data-nav-tab="history">🧾 История</button>
+        <button type="button" data-nav-tab="analytics">📊 Аналитика</button>
+        <button type="button" data-nav-tab="review">✅ Review <span id="dashboardShortcutBadge" hidden>0</span></button>
+      </div>
+    </section>
+
+    <div class="budget-manage-heading"><div><p class="eyebrow">MANAGE BUDGET</p><h2>Бюджет и быстрый ввод</h2></div><span class="muted">выбери Family или Business</span></div>
     <section id="budgetHeroSection" class="hero-card"><p class="muted">Осталось в этом месяце</p><div id="remainingTotal" class="hero-amount">$0</div><div class="hero-row"><span id="spentTotal">Потрачено $0</span><span id="budgetTotal">Бюджет $0</span></div></section>
 
     <section id="budgetStatsSection" class="stats-grid" aria-label="Сводка бюджета">
@@ -91,5 +128,5 @@
 
   <dialog id="editLimitDialog"><form method="dialog" class="dialog-card"><h3 id="limitCategoryName">Лимит</h3><label>Месячный лимит<input id="limitAmount" type="number" step="0.01" min="0" required /></label><p class="hint">0 = без лимита. Изменение применяется ко всем месяцам.</p><div class="dialog-actions split-actions"><button id="resetLimitBtn" class="ghost-btn">Сбросить</button><span class="dialog-spacer"></span><button value="cancel" class="ghost-btn">Отмена</button><button id="saveLimitBtn" value="default" class="primary-btn">Сохранить</button></div></form></dialog>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script><script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script><script src="app.js?v=8.4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script><script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script><script src="app.js?v=9.0"></script>
 </body></html>
