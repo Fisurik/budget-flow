@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0f172a" />
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=9.3" />
+  <link rel="stylesheet" href="styles.css?v=9.4" />
   <title>Budget Flow</title>
 </head>
 <body>
@@ -102,6 +102,11 @@
     <section id="budgetEntrySection" class="entry-card"><label for="expenseInput">Что ты потратил?</label><div class="input-row"><input id="expenseInput" autocomplete="off" placeholder="Publix 54 продукты" /><button id="addBtn" class="primary-btn">Добавить</button></div><div class="quick-row"><button id="repeatLastBtn" class="quick-btn" type="button" disabled>↻ Повторить последнюю</button><span id="lastExpenseHint" class="muted">Пока нечего повторять</span></div><p class="hint">Можно несколько: “Publix 80, BP 35, Chick-fil-A 22”.</p><p id="parsedPreview" class="success-note" hidden></p><div class="scope-toggle"><button class="scope-btn active" data-scope="personal">Family</button><button class="scope-btn" data-scope="business">Business</button></div></section>
 
     <section id="budgetCategoriesSection"><div class="section-title-row"><h2>Категории</h2><span class="muted">нажми «Лимит», чтобы изменить</span></div><div id="categoryList" class="category-list"></div></section>
+    <section id="monthlyTransfersSection" class="monthly-transfers-section">
+      <div class="monthly-transfer-heading"><div><h3>↗ Переносы бюджета</h3><p class="muted">Разовые изменения · <span class="monthly-transfer-month"></span></p></div><button id="openTransferBtn" class="mini-btn transfer-main-btn" type="button">+ Перенести остаток</button></div>
+      <div id="monthlyTransfersList" class="monthly-transfer-list"></div>
+      <p class="hint">Это перераспределение лимитов, не реальный перевод денег. Общий бюджет не меняется. В следующем месяце лимиты обычные.</p>
+    </section>
       </section>
 
       <section id="historyTabPanel" class="app-tab-panel tab-page" data-tab-panel="history" data-tab-page="history" hidden>
@@ -275,7 +280,17 @@ SUPABASE_SECRET_KEY</code>
 
   <dialog id="editDialog"><form method="dialog" class="dialog-card" id="editForm"><h3 id="dialogTitle">Проверить расход</h3><label>Сумма<input id="editAmount" type="number" step="0.01" min="0" required /></label><label>Категория<select id="editCategory"></select></label><label>Описание<input id="editDescription" /></label><div class="dialog-actions split-actions"><button id="deleteExpenseBtn" class="danger-btn" hidden>Удалить</button><span class="dialog-spacer"></span><button value="cancel" class="ghost-btn">Отмена</button><button id="saveExpenseBtn" value="default" class="primary-btn">Сохранить</button></div></form></dialog>
 
+  <dialog id="transferDialog">
+    <form id="transferForm" class="dialog-card">
+      <h3>Перенести остаток</h3><p class="muted transfer-dialog-subtitle">Только <strong id="transferMonth"></strong>. Постоянные лимиты останутся прежними.</p>
+      <label>Из категории<select id="transferFrom" required></select></label>
+      <label>В категорию<select id="transferTo" required></select></label>
+      <label>Сумма ($)<input id="transferAmount" type="number" min="0.01" step="0.01" inputmode="decimal" required /></label>
+      <p id="transferAvailable" class="hint"></p><p id="transferError" class="transfer-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button id="cancelTransferBtn" class="ghost-btn" type="button">Отмена</button><button id="transferSubmitBtn" class="primary-btn" type="submit">Перенести</button></div>
+    </form>
+  </dialog>
   <dialog id="editLimitDialog"><form method="dialog" class="dialog-card"><h3 id="limitCategoryName">Лимит</h3><label>Месячный лимит<input id="limitAmount" type="number" step="0.01" min="0" required /></label><p class="hint">0 = без лимита. Изменение применяется ко всем месяцам.</p><div class="dialog-actions split-actions"><button id="resetLimitBtn" class="ghost-btn">Сбросить</button><span class="dialog-spacer"></span><button value="cancel" class="ghost-btn">Отмена</button><button id="saveLimitBtn" value="default" class="primary-btn">Сохранить</button></div></form></dialog>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script><script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script><script src="app.js?v=9.3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script><script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script><script src="app.js?v=9.4"></script>
 </body></html>

@@ -48,14 +48,15 @@ const state = {
   bankInstitutions: [],
   bankLastSuccessfulUpdate: null,
   bankRefreshing: false,
-  limits: Object.fromEntries(CATEGORY_DEFS.map(c => [c.id, c.limit]))
+  limits: Object.fromEntries(CATEGORY_DEFS.map(c => [c.id, c.limit])),
+  monthlyTransfers: []
 };
 
 const els = Object.fromEntries([
   'authScreen','appShell','authForm','authEmail','authPassword','togglePasswordBtn','passwordHint','authSubmitBtn','authMessage','logoutBtn','userEmail','syncStatus','syncBadge','refreshBtn',
   'remainingTotal','spentTotal','budgetTotal','statBudget','statSpent','statLeft','monthSelect','exportMonthBtn','monthKpis','dailySpendChart','categoryReportBody','monthArchive','historySort','expenseInput','addBtn','repeatLastBtn','lastExpenseHint','categoryList','insights','transactions','historySearch','editDialog','editAmount','editCategory','editDescription',
   'saveExpenseBtn','dialogTitle','deleteExpenseBtn','parsedPreview','monthLabel','prevMonthBtn','nextMonthBtn','todayMonthBtn','historyFilter','editLimitDialog',
-  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn','reviewTabBadge','monthNavSection','budgetTabPanel','historyTabPanel','analyticsTabPanel','budgetHeroSection','budgetStatsSection','budgetEntrySection','budgetCategoriesSection','analyticsExplorerSection','analyticsInsightsSection','historySection','projectTabPanel','advisorSection','advisorStatus','advisorSummary','advisorActions','advisorBills','advisorNote','copyProjectContextBtn','exportProjectContextBtn','projectContextText','projectNotes','projectNotesSaved','dashboardOverview','dashboardMonthTitle','dashboardReviewBtn','dashboardReviewCount','dashboardShortcutBadge','familyLeft','familyBudget','familySpent','familyProgress','businessLeft','businessLeftLabel','businessBudget','businessSpent','businessProgress','dashboardTopCategories','dashboardMiniTrend','bankFreshness'
+  'limitCategoryName','limitAmount','saveLimitBtn','resetLimitBtn','importCsvBtn','connectBankBtn','syncBankBtn','bankCsvInput','reviewSection','dashboardContent','reviewCount','reviewImportBtn','approveAllBtn','reviewNotice','reviewList','openDashboardBtn','reviewTabBadge','monthNavSection','budgetTabPanel','historyTabPanel','analyticsTabPanel','budgetHeroSection','budgetStatsSection','budgetEntrySection','budgetCategoriesSection','analyticsExplorerSection','analyticsInsightsSection','historySection','projectTabPanel','advisorSection','advisorStatus','advisorSummary','advisorActions','advisorBills','advisorNote','copyProjectContextBtn','exportProjectContextBtn','projectContextText','projectNotes','projectNotesSaved','dashboardOverview','dashboardMonthTitle','dashboardReviewBtn','dashboardReviewCount','dashboardShortcutBadge','monthlyTransfersSection','monthlyTransfersList','openTransferBtn','transferDialog','transferForm','transferFrom','transferTo','transferAmount','transferMonth','transferAvailable','transferError','transferSubmitBtn','cancelTransferBtn','familyLeft','familyBudget','familySpent','familyProgress','businessLeft','businessLeftLabel','businessBudget','businessSpent','businessProgress','dashboardTopCategories','dashboardMiniTrend','bankFreshness'
 ].map(id => [id, document.querySelector('#'+id)]));
 
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
@@ -66,9 +67,27 @@ function money(n) { return new Intl.NumberFormat('en-US',{style:'currency',curre
 function money2(n) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n || 0); }
 function getCategory(id) { return CATEGORY_DEFS.find(c => c.id === id); }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[ch])); }
-function categoryLimit(id) { return Number(state.limits[id] ?? getCategory(id)?.limit ?? 0); }
+function baseCategoryLimit(id) { return Number(state.limits[id] ?? getCategory(id)?.limit ?? 0); }
+function categoryLimit(id, month=state.selectedMonth) {
+  const delta=state.monthlyTransfers.filter(t=>t.month===month).reduce((sum,t)=>
+    sum+(t.to===id?t.amount:0)-(t.from===id?t.amount:0),0);
+  return Math.round((baseCategoryLimit(id)+delta)*100)/100;
+}
+const TRANSFER_PREFIX='xfer:';
+function decodeTransfer(category,amount){
+  const match=String(category||'').match(/^xfer:(\d{4}-\d{2}):([a-z0-9_]+):([a-z0-9_]+):([0-9a-z-]+)$/);
+  if(!match)return null;
+  const [,month,from,to,id]=match, fromCategory=getCategory(from),toCategory=getCategory(to),value=Number(amount);
+  const [,mm]=month.split('-').map(Number);
+  if(!fromCategory||!toCategory||from===to||fromCategory.scope!==toCategory.scope||mm<1||mm>12||!Number.isFinite(value)||value<=0)return null;
+  return {key:category,month,from,to,id,amount:Math.round(value*100)/100};
+}
+function categorySpent(id){return state.transactions.filter(t=>t.categoryId===id).reduce((sum,t)=>sum+t.amount,0);}
+function availableToTransfer(id){return Math.max(0,Math.round((categoryLimit(id)-categorySpent(id))*100)/100);}
+function monthTransfers(month=state.selectedMonth){return state.monthlyTransfers.filter(t=>t.month===month);}
 
-const ADVISOR_FIXED_IDS = ['rent','electricity','phone','internet','gas_home','insurance','subscriptions','debt'];
+
+const ADVISOR_FIXED_IDS = ['rent','electric','phone','internet','gas_home','insurance','subscriptions','debt'];
 const ADVISOR_DISCRETIONARY_IDS = ['eating_out','subscriptions','other','groceries'];
 function median(values){
   const a=values.filter(Number.isFinite).slice().sort((x,y)=>x-y);
@@ -92,7 +111,10 @@ function renderAdvisor(){
   const obligations=fixedCats.map(c=>{
     const currentSpent=txs.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
     const profile=advisorRecurringProfile(c.id); const limit=categoryLimit(c.id);
-    const expected=Math.max(limit,profile.amount||0); const remaining=Math.max(0,expected-currentSpent);
+    // A transfer out is an explicit plan adjustment for this month, so historical billing estimates
+    // must not reinstate money the user has deliberately reassigned.
+    const adjusted=monthTransfers().some(t=>t.from===c.id);
+    const expected=adjusted?limit:Math.max(limit,profile.amount||0); const remaining=Math.max(0,expected-currentSpent);
     const dueDay=profile.dueDay?Math.max(1,Math.min(daysInMonth,Math.round(profile.dueDay))):null;
     return {c,currentSpent,expected,remaining,dueDay,months:profile.months};
   }).filter(x=>x.remaining>1);
@@ -460,11 +482,20 @@ async function refreshBankNow(){
 
 async function loadLimits(){
   state.limits = Object.fromEntries(CATEGORY_DEFS.map(c => [c.id,c.limit]));
+  state.monthlyTransfers=[];
   const local=JSON.parse(localStorage.getItem('budgetFlowLimits')||'{}'); Object.assign(state.limits,local);
   if(!currentUser) return;
   const {data,error}=await sb.from('budget_limits').select('category,amount');
   if(error){limitsCloudAvailable=false; console.warn('budget_limits unavailable',error.message); return;}
-  limitsCloudAvailable=true; for(const row of data||[]) state.limits[row.category]=Number(row.amount);
+  limitsCloudAvailable=true;
+  for(const row of data||[]){
+    if(String(row.category).startsWith(TRANSFER_PREFIX)){
+      const transfer=decodeTransfer(row.category,row.amount);
+      if(transfer)state.monthlyTransfers.push(transfer);
+    }else if(getCategory(row.category)){
+      state.limits[row.category]=Number(row.amount);
+    }
+  }
 }
 
 async function loadTransactions(){
@@ -525,6 +556,84 @@ async function resetLimit(e){
   e.preventDefault(); const id=els.editLimitDialog.dataset.categoryId,c=getCategory(id); if(!c)return; state.limits[id]=c.limit; localStorage.setItem('budgetFlowLimits',JSON.stringify(state.limits));
   if(limitsCloudAvailable) await sb.from('budget_limits').upsert({category:id,amount:c.limit},{onConflict:'user_id,category'});
   els.limitAmount.value=c.limit; els.editLimitDialog.close(); render();
+}
+
+
+function transferCategoryOptions(scope,exclude=''){
+  return CATEGORY_DEFS.filter(c=>c.scope===scope&&c.id!==exclude)
+    .map(c=>`<option value="${c.id}">${c.icon} ${escapeHtml(c.name)}</option>`).join('');
+}
+function setTransferError(message=''){
+  els.transferError.textContent=message;
+  els.transferError.hidden=!message;
+}
+function updateTransferForm({refill=false}={}){
+  const from=getCategory(els.transferFrom.value);
+  if(!from)return;
+  const previousTo=els.transferTo.value;
+  els.transferTo.innerHTML=transferCategoryOptions(from.scope,from.id);
+  const destination=getCategory(previousTo);
+  if(destination?.scope===from.scope&&destination.id!==from.id)els.transferTo.value=previousTo;
+  else if(from.scope==='personal'&&from.id!=='groceries')els.transferTo.value='groceries';
+  const maximum=availableToTransfer(from.id);
+  els.transferAvailable.textContent=`Свободно в категории: ${money2(maximum)} · Максимум для переноса: ${money2(maximum)}`;
+  els.transferAmount.max=maximum.toFixed(2);
+  if(refill||Number(els.transferAmount.value)>maximum)els.transferAmount.value=maximum>0?maximum.toFixed(2):'';
+  els.transferSubmitBtn.disabled=maximum<0.01;
+  setTransferError('');
+}
+function openTransferDialog(fromId=null){
+  if(!limitsCloudAvailable){showParsedMessage('Переносы требуют синхронизации лимитов с Supabase');return;}
+  const scope=fromId?getCategory(fromId)?.scope:state.scope;
+  const sources=CATEGORY_DEFS.filter(c=>c.scope===scope);
+  els.transferFrom.innerHTML=sources.map(c=>`<option value="${c.id}">${c.icon} ${escapeHtml(c.name)}</option>`).join('');
+  const preferred=sources.find(c=>availableToTransfer(c.id)>0);
+  els.transferFrom.value=fromId&&getCategory(fromId)?.scope===scope?fromId:(preferred?.id||sources[0].id);
+  els.transferTo.value='';
+  els.transferMonth.textContent=monthLabelFromKey(state.selectedMonth);
+  updateTransferForm({refill:true});
+  els.transferDialog.showModal();
+}
+async function saveTransfer(e){
+  e.preventDefault();
+  if(!currentUser||!limitsCloudAvailable)return setTransferError('Нет соединения с облачными лимитами.');
+  const from=els.transferFrom.value,to=els.transferTo.value;
+  const value=Number(els.transferAmount.value),amount=Math.round(value*100)/100;
+  const a=getCategory(from),b=getCategory(to);
+  if(!a||!b||a.id===b.id||a.scope!==b.scope)return setTransferError('Выбери две разные категории одного бюджета.');
+  if(!Number.isFinite(value)||amount<=0||Math.abs(value-amount)>.00001)return setTransferError('Введи положительную сумму с точностью до цента.');
+  const maximum=availableToTransfer(from);
+  if(amount>maximum+0.00001)return setTransferError(`Можно перенести максимум ${money2(maximum)}.`);
+  const key=`${TRANSFER_PREFIX}${state.selectedMonth}:${from}:${to}:${crypto.randomUUID()}`;
+  els.transferSubmitBtn.disabled=true;
+  const {error}=await sb.from('budget_limits').insert({category:key,amount});
+  els.transferSubmitBtn.disabled=false;
+  if(error){console.error(error);return setTransferError('Не удалось сохранить перенос. Проверь подключение к Supabase и попробуй ещё раз.');}
+  state.monthlyTransfers.push({key,month:state.selectedMonth,from,to,id:key.split(':').at(-1),amount});
+  els.transferDialog.close();
+  render();
+  showParsedMessage(`Перенесено ${money2(amount)}: ${a.name} → ${b.name} · только ${monthLabelFromKey(state.selectedMonth)}`);
+}
+async function undoTransfer(key){
+  const transfer=state.monthlyTransfers.find(t=>t.key===key);
+  if(!transfer||!confirm(`Отменить перенос ${money2(transfer.amount)} из ${getCategory(transfer.from)?.name} в ${getCategory(transfer.to)?.name}?`))return;
+  const {error}=await sb.from('budget_limits').delete().eq('category',key);
+  if(error){console.error(error);showParsedMessage('Не удалось отменить перенос');return;}
+  state.monthlyTransfers=state.monthlyTransfers.filter(t=>t.key!==key);
+  render();
+  showParsedMessage('Перенос отменён');
+}
+function renderMonthlyTransfers(){
+  if(!els.monthlyTransfersList)return;
+  const transfers=monthTransfers().filter(t=>getCategory(t.from)?.scope===state.scope);
+  els.monthlyTransfersSection.querySelector('.monthly-transfer-month').textContent=monthLabelFromKey(state.selectedMonth);
+  els.monthlyTransfersList.innerHTML=transfers.length?transfers.map(t=>`
+    <div class="monthly-transfer-item"><span>${getCategory(t.from).icon} ${escapeHtml(getCategory(t.from).name)} <b>→</b> ${getCategory(t.to).icon} ${escapeHtml(getCategory(t.to).name)}</span>
+    <strong>${money2(t.amount)}</strong><button type="button" class="mini-btn undo-transfer-btn" data-transfer-key="${escapeHtml(t.key)}" aria-label="Отменить перенос">Отменить</button></div>`).join(''):
+    '<p class="muted monthly-transfer-empty">В этом месяце переносов ещё нет. Можно переместить неиспользованный остаток в другую категорию.</p>';
+  els.monthlyTransfersList.querySelectorAll('.undo-transfer-btn').forEach(btn=>btn.addEventListener('click',()=>undoTransfer(btn.dataset.transferKey)));
+  els.openTransferBtn.disabled=!limitsCloudAvailable;
+  els.openTransferBtn.title=limitsCloudAvailable?'':'Недоступна синхронизация лимитов';
 }
 
 function lastExpenseForScope(){
@@ -736,8 +845,10 @@ function render(){
   const activeCategories=CATEGORY_DEFS.filter(c=>c.scope===state.scope); const budgetTotal=activeCategories.reduce((s,c)=>s+categoryLimit(c.id),0); const scopedSpent=state.transactions.filter(t=>t.scope===state.scope).reduce((s,t)=>s+t.amount,0);
   const left=budgetTotal-scopedSpent; els.remainingTotal.textContent=money(left); els.spentTotal.textContent=`Потрачено ${money(scopedSpent)}`; els.budgetTotal.textContent=`Бюджет ${money(budgetTotal)}`; els.statBudget.textContent=money(budgetTotal); els.statSpent.textContent=money(scopedSpent); els.statLeft.textContent=money(left); els.statLeft.classList.toggle('negative',left<0);
   const visible=CATEGORY_DEFS.filter(c=>c.scope===state.scope);
-  els.categoryList.innerHTML=visible.map(c=>{const limit=categoryLimit(c.id),spent=state.transactions.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0),remaining=limit>0?limit-spent:null,rawPct=limit>0?(spent/limit)*100:0,pct=Math.min(100,rawPct),cls=rawPct>=100?'danger':rawPct>=80?'warn':'',cardCls=rawPct>=100?'over-budget':rawPct>=80?'near-limit':'',note=rawPct>=100?`<div class="limit-note danger">Превышение ${money2(spent-limit)}</div>`:rawPct>=80?`<div class="limit-note warn">Осталось ${money2(remaining)}</div>`:'';return `<article class="category-card ${cardCls}"><div class="category-head"><div><div class="category-name">${c.icon} ${c.name}</div><div class="category-meta">Потрачено ${money2(spent)}${limit>0?` из ${money2(limit)}`:''}</div>${note}</div><div class="category-actions"><div class="category-remaining">${limit>0?`${money2(remaining)} left`:money2(spent)}</div><button class="mini-btn edit-limit-btn" data-category="${c.id}">Лимит</button></div></div>${limit>0?`<div class="progress"><div class="${cls}" style="width:${pct}%"></div></div>`:''}</article>`;}).join('');
+  els.categoryList.innerHTML=visible.map(c=>{const limit=categoryLimit(c.id),spent=state.transactions.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0),remaining=limit>0?limit-spent:null,rawPct=limit>0?(spent/limit)*100:0,pct=Math.min(100,rawPct),cls=rawPct>=100?'danger':rawPct>=80?'warn':'',cardCls=rawPct>=100?'over-budget':rawPct>=80?'near-limit':'',note=rawPct>=100?`<div class="limit-note danger">Превышение ${money2(spent-limit)}</div>`:rawPct>=80?`<div class="limit-note warn">Осталось ${money2(remaining)}</div>`:'';return `<article class="category-card ${cardCls}"><div class="category-head"><div><div class="category-name">${c.icon} ${c.name}</div><div class="category-meta">Потрачено ${money2(spent)}${limit>0?` из ${money2(limit)}`:''}</div>${note}</div><div class="category-actions"><div class="category-remaining">${limit>0?`${money2(remaining)} left`:money2(spent)}</div><button class="mini-btn transfer-btn" data-category="${c.id}" ${remaining===null||remaining<=0||!limitsCloudAvailable?'disabled':''} title="Перенос на выбранный месяц">Перенести</button><button class="mini-btn edit-limit-btn" data-category="${c.id}">Лимит</button></div></div>${limit>0?`<div class="progress"><div class="${cls}" style="width:${pct}%"></div></div>`:''}</article>`;}).join('');
   els.categoryList.querySelectorAll('.edit-limit-btn').forEach(b=>b.addEventListener('click',()=>openLimitDialog(b.dataset.category)));
+  els.categoryList.querySelectorAll('.transfer-btn').forEach(b=>b.addEventListener('click',()=>openTransferDialog(b.dataset.category)));
+  renderMonthlyTransfers();
   const last=lastExpenseForScope(); els.repeatLastBtn.disabled=!last; els.lastExpenseHint.textContent=last?`${last.description} · ${money2(last.amount)}`:'Пока нечего повторять';
   renderDashboard(); renderAdvisor(); renderMonthlyExplorer(); renderInsights(); renderHistory();
 }
@@ -776,6 +887,7 @@ async function showApp(session){
   currentUser=session?.user||null;
   if(!currentUser){
     state.transactions=[];
+    state.monthlyTransfers=[];
     state.reviewTransactions=[];
     state.reviewDismissed=false;
     setSignedInView(false);
@@ -825,6 +937,11 @@ document.querySelectorAll('.view-btn').forEach(btn=>btn.addEventListener('click'
 
 els.prevMonthBtn.addEventListener('click',()=>shiftMonth(-1)); els.nextMonthBtn.addEventListener('click',()=>shiftMonth(1)); els.todayMonthBtn.addEventListener('click',setThisMonth);
 els.saveLimitBtn.addEventListener('click',saveLimit); els.resetLimitBtn.addEventListener('click',resetLimit);
+els.openTransferBtn.addEventListener('click',()=>openTransferDialog());
+els.transferFrom.addEventListener('change',()=>updateTransferForm({refill:true}));
+els.transferAmount.addEventListener('input',()=>setTransferError(''));
+els.transferForm.addEventListener('submit',saveTransfer);
+els.cancelTransferBtn.addEventListener('click',()=>els.transferDialog.close());
 els.connectBankBtn.addEventListener('click',connectBank);
 els.syncBankBtn.addEventListener('click',refreshBankNow);
 els.importCsvBtn.addEventListener('click',()=>els.bankCsvInput.click());

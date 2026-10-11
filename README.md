@@ -1,3 +1,19 @@
+# Budget Flow v9.4 — One-Month Budget Transfers
+
+## New: move unused budget between categories (cloud synced, no new SQL)
+
+- In **Budget → Categories** choose **Перенести** on a category with remaining funds, or select **+ Перенести остаток** in the new transfers panel.
+- Choose another category in the **same Family or Business scope**, and enter an amount not exceeding the source's *unspent* allocation.
+- Example: **Home Gas → Groceries: $4.00** in October. October Home Gas allocation falls by $4 and Groceries rises by $4; the total Family budget remains identical.
+- Changes apply only to the currently selected month. November uses the unchanged normal monthly limits. October's transfer remains recorded when viewing October later.
+- Transfers sync across devices using existing authenticated `budget_limits` rows, identified by an `xfer:` prefix. Supabase's existing RLS protects them; no schema change is required.
+- **Отменить** deletes a transfer and restores that month's previous allocations.
+- The Advisor respects deliberate decreases of a fixed-expense category instead of automatically reserving the reassigned money again based on historical bills.
+- Transfers **do not** move bank money, change booked transactions, or change default category limits. No Plaid/API changes.
+
+## Deploy
+Unzip and upload all files to GitHub repo root (including `api/`). Vercel redeploys automatically. On iPhone, reload the installed PWA or reinstall its icon if the old cached UI persists.
+
 # Budget Flow v9.2 — Fast Bank Refresh
 
 Adds near-on-demand bank freshness on top of v9.1.
